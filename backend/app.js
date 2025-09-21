@@ -13,7 +13,7 @@ var port = 3000;
 
 // Add your frontend URL to CORS
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:8080', 'http://localhost:3000', 'http://192.168.5.102:8080', 'http://192.168.5.102:3000', 'http://192.168.5.105:8080'],
+  origin: ['https://medtest-ai.vercel.app','http://localhost:5173', 'http://localhost:8080', 'http://localhost:3000', 'http://192.168.5.102:8080', 'http://192.168.5.102:3000', 'http://192.168.5.105:8080'],
   credentials: true
 }));
 
