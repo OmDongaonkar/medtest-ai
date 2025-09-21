@@ -301,7 +301,7 @@ const UploadPage = () => {
 
       console.log('📤 Sending request with user info:', requestBody.userInfo);
 
-      const response = await fetch("http://localhost:3000/upload/generate-test", {
+      const response = await fetch("https://medtest-ai.onrender.com/upload/generate-test", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
