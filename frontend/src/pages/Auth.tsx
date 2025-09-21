@@ -41,7 +41,7 @@ const Auth = () => {
       // Step 1: Call backend logout endpoint
       try {
         console.log("📤 Calling backend logout endpoint...");
-        const response = await fetch("http://localhost:3000/auth/logout", {
+        const response = await fetch("https://medtest-ai.onrender.com/auth/logout", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -203,8 +203,8 @@ const Auth = () => {
 
       // Step 3: Send to backend
       const endpoint = activeTab === "login" 
-        ? "http://localhost:3000/auth/google-login"
-        : "http://localhost:3000/auth/google-signup";
+        ? "https://medtest-ai.onrender.com/auth/google-login"
+        : "https://medtest-ai.onrender.com/auth/google-signup";
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -285,8 +285,8 @@ const Auth = () => {
 
     const url =
       type === "login"
-        ? `http://localhost:3000/auth/login`
-        : `http://localhost:3000/auth/signup`;
+        ? `https://medtest-ai.onrender.com/auth/login`
+        : `https://medtest-ai.onrender.com/auth/signup`;
 
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
