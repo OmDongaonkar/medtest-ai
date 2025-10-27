@@ -9,9 +9,10 @@ import Auth from "./pages/Auth";
 import ForgotPassword from "./pages/ForgotPassword";
 import Upload from "./pages/Upload";
 import Output from "./pages/Output";
+import ChatInterface from "./pages/Chat";
 import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
-import Logout from "./pages/Logout"; // Make sure this points to the new Logout component
+import Logout from "./pages/Logout";
 import NotFound from "./pages/NotFound";
 import Navigation from "./components/Navigation";
 
@@ -31,6 +32,7 @@ const AppContent = () => {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/upload" element={<Upload />} />
           <Route path="/output" element={<Output />} />
+          <Route path="/chat" element={<ChatInterface />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/logout" element={<Logout />} />

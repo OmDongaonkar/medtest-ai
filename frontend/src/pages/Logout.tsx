@@ -18,7 +18,8 @@ const Logout = () => {
         // Step 1: Call backend logout endpoint
         try {
           console.log("📤 Calling backend logout endpoint...");
-          const response = await fetch("http://localhost:3000/auth/logout", {
+         // const response = await fetch("http://localhost:3000/auth/logout", {
+          const response = await fetch(`${import.meta.env.VITE_REQUEST_URL}/auth/logout`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

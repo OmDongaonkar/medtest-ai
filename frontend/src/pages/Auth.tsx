@@ -41,7 +41,8 @@ const Auth = () => {
       // Step 1: Call backend logout endpoint
       try {
         console.log("📤 Calling backend logout endpoint...");
-        const response = await fetch("http://localhost:3000/auth/logout", {
+       // const response = await fetch("http://localhost:3000/auth/logout", {
+        const response = await fetch(`${import.meta.env.VITE_REQUEST_URL}/auth/logout`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -203,8 +204,10 @@ const Auth = () => {
 
       // Step 3: Send to backend
       const endpoint = activeTab === "login" 
-        ? "http://localhost:3000/auth/google-login"
-        : "http://localhost:3000/auth/google-signup";
+        //? `http://localhost:3000/auth/google-login`
+        ? `${import.meta.env.VITE_REQUEST_URL}/auth/google-login`
+       // : "http://localhost:3000/auth/google-signup";
+        : `${import.meta.env.VITE_REQUEST_URL}/auth/google-signup`;
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -285,8 +288,10 @@ const Auth = () => {
 
     const url =
       type === "login"
-        ? `http://localhost:3000/auth/login`
-        : `http://localhost:3000/auth/signup`;
+       // ? `http://localhost:3000/auth/login`
+        ? `${import.meta.env.VITE_REQUEST_URL}/auth/login`
+        //: `http://localhost:3000/auth/signup`;
+        : `${import.meta.env.VITE_REQUEST_URL}/auth/signup`;
 
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());

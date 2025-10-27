@@ -1,3 +1,4 @@
+require('dotenv').config();
 var createError = require('http-errors');
 var express = require('express');
 var cors = require('cors');
@@ -9,7 +10,7 @@ var uploadRouter = require('./routes/upload');
 const session = require('express-session');
 
 var app = express();
-var port = 3000;
+var port = process.env.PORT || 3000;
 
 // Add your frontend URL to CORS
 app.use(cors({

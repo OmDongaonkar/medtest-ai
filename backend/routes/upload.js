@@ -3,7 +3,8 @@ const router = express.Router();
 const axios = require('axios');
 
 // Firebase REST API approach (no SDK required)
-const FIREBASE_URL = "https://med-test-269d5-default-rtdb.firebaseio.com";
+//const FIREBASE_URL = "https://med-test-269d5-default-rtdb.firebaseio.com";
+const FIREBASE_URL = process.env.DATABASE_URL;
 
 router.post('/generate-test', async (req, res) => {
     
@@ -32,7 +33,8 @@ router.post('/generate-test', async (req, res) => {
     const correctModel = "gemini-2.5-flash-preview-09-2025"; 
     
     // Gemini API call
-    const geminiApiKey = process.env.GEMINI_API_KEY || "AIzaSyAy8eU9Joj9SEKr8oZ52Tf9zRSIL6-2CYk";
+   // const geminiApiKey = process.env.GEMINI_API_KEY || "AIzaSyAy8eU9Joj9SEKr8oZ52Tf9zRSIL6-2CYk";
+    const geminiApiKey = process.env.GEMINI_API_KEY;
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${correctModel}:generateContent?key=${geminiApiKey}`;
         
     const prompt = `

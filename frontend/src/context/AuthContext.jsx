@@ -18,10 +18,41 @@ export const AuthProvider = ({ children }) => {
 
   const checkAuth = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/auth/check`, {
+      const apiUrl = import.meta.env.VITE_REQUEST_URL;
+      
+      // Debug logging
+      console.log("Checking auth with URL:", `${apiUrl}/auth/check`);
+      
+      if (!apiUrl) {
+        console.error("VITE_REQUEST_URL is not defined!");
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch(`${apiUrl}/auth/check`, {
         credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
+
+      console.log("Auth check response status:", response.status);
+
+      // Check if response is actually JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.error("Response is not JSON:", contentType);
+        const text = await response.text();
+        console.error("Response body:", text.substring(0, 200));
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
       const data = await response.json();
+      console.log("Auth check data:", data);
+      
       setUser(data.loggedIn ? data.user : null);
     } catch (error) {
       console.error("Auth check failed:", error);
@@ -37,14 +68,21 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
+      const apiUrl = import.meta.env.VITE_REQUEST_URL;
+      
       // Sign out from Firebase
       await auth.signOut();
       
       // Call backend logout
-      await fetch(`http://localhost:3000/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      if (apiUrl) {
+        await fetch(`${apiUrl}/auth/logout`, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      }
       
       setUser(null);
     } catch (error) {
@@ -73,7 +111,7 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
 
     return () => unsubscribe();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value = {
     user,

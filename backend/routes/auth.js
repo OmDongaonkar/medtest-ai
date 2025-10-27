@@ -4,8 +4,8 @@ const router = express.Router();
 const axios = require('axios');
 
 // Firebase Realtime Database URL
-//const FIREBASE_URL = 'https://medtest-ai-default-rtdb.firebaseio.com/users.json';
-const FIREBASE_URL = 'https://med-test-269d5-default-rtdb.firebaseio.com/users.json';
+//const FIREBASE_URL = 'https://med-test-269d5-default-rtdb.firebaseio.com/users.json';
+const FIREBASE_URL = `${process.env.DATABASE_URL}/users.json`;
 
 // POST /signup route
 router.post('/signup', async function(req, res) {
@@ -244,8 +244,8 @@ router.post('/google-login', async function(req, res) {
     // Update user's Firebase UID if not already set
     if (!user.firebaseUid) {
       try {
-        //const updateUrl = `https://medtest-ai-default-rtdb.firebaseio.com/users/${userId}.json`;
-        const updateUrl = `https://med-test-269d5-default-rtdb.firebaseio.com/users/${userId}.json`;
+        //const updateUrl = `https://med-test-269d5-default-rtdb.firebaseio.com/users/${userId}.json`;
+        const updateUrl = `${process.env.DATABASE_URL}/users/${userId}.json`;
         await axios.patch(updateUrl, { 
           firebaseUid: uid,
           photoURL: photoURL || user.photoURL,
