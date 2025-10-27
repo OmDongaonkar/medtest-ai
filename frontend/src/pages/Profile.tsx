@@ -780,9 +780,6 @@ const Profile = () => {
                           <div className="flex items-center justify-between">
                             <div className="space-y-1 flex-1">
                               <div className="flex items-center space-x-3">
-                                <Badge variant="outline" className="text-xs">
-                                  {testCase.docId?.substring(0, 8) || testCase.id}
-                                </Badge>
                                 <h3 className="font-semibold text-sm">
                                   {testCase.title}
                                 </h3>
@@ -852,13 +849,6 @@ const Profile = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>Test Case Details</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsModalOpen(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
             </DialogTitle>
             <DialogDescription>
               {selectedTestCase && (
