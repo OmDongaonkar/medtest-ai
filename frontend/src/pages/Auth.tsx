@@ -47,7 +47,7 @@ const Auth = () => {
           headers: {
             "Content-Type": "application/json",
           },
-          credentials: "include", // Important: include cookies for session handling
+          credentials: "include",
         });
 
         if (!response.ok) {

@@ -7,10 +7,12 @@ var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 var authRouter = require('./routes/auth');
 var uploadRouter = require('./routes/upload');
+var JiraRouter = require('./routes/Integrations/jira');
+
 const session = require('express-session');
 
 var app = express();
-var port = process.env.PORT || 3000;
+var port = process.env.PORT;
 
 // Add your frontend URL to CORS
 app.use(cors({
@@ -38,6 +40,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ROUTES - Mount at /api/auth to match your frontend calls
 app.use('/auth', authRouter);
 app.use('/upload', uploadRouter);
+app.use('/integrations', JiraRouter);
 
 // Test route
 app.get('/', (req, res) => {
@@ -72,8 +75,7 @@ app.use(function(err, req, res, next) {
 });
 
 app.listen(port, () => {
-  console.log(`🚀 Server running at http://localhost:${port}`);
-  console.log(`📋 Auth routes available at http://localhost:${port}/auth/`);
+  console.log(`Server running at http://localhost:${port}`);
 });
 
 module.exports = app;
