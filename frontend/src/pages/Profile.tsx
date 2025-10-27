@@ -42,7 +42,7 @@ import { useNavigate } from "react-router-dom";
 import { getDatabase, ref, get, set } from "firebase/database";
 
 // Import SheetJS for Excel export
-import * as XLSX from 'xlsx';
+import * as XLSX from "xlsx";
 
 interface UserInfo {
   name: string;
@@ -121,12 +121,13 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [loadingTestCases, setLoadingTestCases] = useState(false);
   const [updating, setUpdating] = useState(false);
-  
+
   // Modal states
-  const [selectedTestCase, setSelectedTestCase] = useState<DetailedTestCase | null>(null);
+  const [selectedTestCase, setSelectedTestCase] =
+    useState<DetailedTestCase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  
+
   const { toast } = useToast();
   const navigate = useNavigate();
   const { isLoggedIn, user } = useAuth();
@@ -143,7 +144,7 @@ const Profile = () => {
     const fetchUserData = async () => {
       try {
         setLoading(true);
-        
+
         if (!user || !user.email) {
           console.log("No authenticated user found in session or no email");
           navigate("/auth", { replace: true });
@@ -154,22 +155,22 @@ const Profile = () => {
         console.log("Fetching data for email:", userEmail);
 
         const database = getDatabase();
-        const usersRef = ref(database, 'users');
+        const usersRef = ref(database, "users");
         const snapshot = await get(usersRef);
-        
+
         if (snapshot.exists()) {
           const allUsers = snapshot.val();
           let foundUser = null;
           let foundUserId = null;
-          
-          Object.keys(allUsers).forEach(userId => {
+
+          Object.keys(allUsers).forEach((userId) => {
             const dbUser = allUsers[userId];
             if (dbUser.email === userEmail) {
               foundUser = dbUser;
               foundUserId = userId;
             }
           });
-          
+
           if (foundUser) {
             console.log("User data found:", foundUser);
             setUserInfo({
@@ -177,13 +178,15 @@ const Profile = () => {
               name: foundUser.name || "User",
               email: foundUser.email || "",
               createdAt: foundUser.createdAt || new Date().toISOString(),
-              avatar: foundUser.photoURL || foundUser.avatar || user.photoURL || "",
+              avatar:
+                foundUser.photoURL || foundUser.avatar || user.photoURL || "",
             });
           } else {
             console.log("No user data found for email:", userEmail);
             toast({
               title: "Profile not found",
-              description: "No profile data found for your account. Please contact support if this is unexpected.",
+              description:
+                "No profile data found for your account. Please contact support if this is unexpected.",
               variant: "destructive",
             });
           }
@@ -199,7 +202,8 @@ const Profile = () => {
         console.error("Error fetching user data:", error);
         toast({
           title: "Error loading profile",
-          description: "Failed to load your profile data. Please try refreshing the page.",
+          description:
+            "Failed to load your profile data. Please try refreshing the page.",
           variant: "destructive",
         });
       } finally {
@@ -212,6 +216,20 @@ const Profile = () => {
     }
   }, [isLoggedIn, user, navigate, toast]);
 
+  const CallJiraConnect = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_REQUEST_URL}/integrations/jira`, {
+        method: "GET",
+        credentials: "include",
+      });
+      const data = await response.json();
+      const JIRA_URL = data.url;
+      window.location.href = JIRA_URL;
+    } catch (err) {
+      console.error("Failed to connect Jira:", err);
+    }
+  };
+
   // Fetch test cases for the user from Firebase directly
   useEffect(() => {
     const fetchUserTestCases = async () => {
@@ -223,68 +241,87 @@ const Profile = () => {
 
         // Get Firebase Realtime Database instance
         const database = getDatabase();
-        
+
         // Get all test cases and filter by createdBy email
-        const testCasesRef = ref(database, 'testCases');
+        const testCasesRef = ref(database, "testCases");
         const snapshot = await get(testCasesRef);
-        
+
         if (snapshot.exists()) {
           const allTestCases = snapshot.val();
           const userTestCases: TestCase[] = [];
-          
+
           // Filter test cases by createdBy field matching user email
-          Object.keys(allTestCases).forEach(testCaseId => {
+          Object.keys(allTestCases).forEach((testCaseId) => {
             const testCase = allTestCases[testCaseId];
-            
+
             // Check if this test case was created by the current user
-            if (testCase.metadata?.createdBy === user.email || 
-                testCase.metadata?.userEmail === user.email) {
-              
-              console.log("Found test case for user:", testCase.metadata?.createdBy);
-              
+            if (
+              testCase.metadata?.createdBy === user.email ||
+              testCase.metadata?.userEmail === user.email
+            ) {
+              console.log(
+                "Found test case for user:",
+                testCase.metadata?.createdBy
+              );
+
               // Create a properly formatted test case object
               const formattedTestCase: TestCase = {
                 id: testCaseId,
                 docId: testCaseId,
-                generatedAt: testCase.metadata?.generatedAt || new Date().toISOString(),
+                generatedAt:
+                  testCase.metadata?.generatedAt || new Date().toISOString(),
                 requirementsLength: testCase.metadata?.requirementsLength || 0,
-                testCasesCount: testCase.summary?.totalTestCases || testCase.testCases?.length || 0,
-                title: testCase.metadata?.originalRequirements?.substring(0, 100) + 
-                       (testCase.metadata?.originalRequirements?.length > 100 ? '...' : '') || 
-                       'Test Case Set',
+                testCasesCount:
+                  testCase.summary?.totalTestCases ||
+                  testCase.testCases?.length ||
+                  0,
+                title:
+                  testCase.metadata?.originalRequirements?.substring(0, 100) +
+                    (testCase.metadata?.originalRequirements?.length > 100
+                      ? "..."
+                      : "") || "Test Case Set",
                 summary: testCase.summary || {
                   totalTestCases: testCase.testCases?.length || 0,
                   categoriesBreakdown: {},
                   priorityBreakdown: {},
                   complianceStandardsCovered: [],
-                  overallRiskAssessment: ''
+                  overallRiskAssessment: "",
                 },
                 userEmail: testCase.metadata?.userEmail || user.email,
-                userName: testCase.metadata?.user?.displayName || testCase.metadata?.user?.name || user.displayName || user.name || 'Unknown'
+                userName:
+                  testCase.metadata?.user?.displayName ||
+                  testCase.metadata?.user?.name ||
+                  user.displayName ||
+                  user.name ||
+                  "Unknown",
               };
-              
+
               userTestCases.push(formattedTestCase);
             }
           });
-          
+
           // Sort by generation date (newest first)
-          userTestCases.sort((a, b) => 
-            new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()
+          userTestCases.sort(
+            (a, b) =>
+              new Date(b.generatedAt).getTime() -
+              new Date(a.generatedAt).getTime()
           );
-          
-          console.log(`Found ${userTestCases.length} test cases for user:`, user.email);
+
+          console.log(
+            `Found ${userTestCases.length} test cases for user:`,
+            user.email
+          );
           setTestCases(userTestCases);
-          
         } else {
           console.log("No test cases collection exists in database");
           setTestCases([]);
         }
-
       } catch (error) {
         console.error("Error fetching test cases:", error);
         toast({
           title: "Error loading test cases",
-          description: "Failed to load your test cases. Please try refreshing the page.",
+          description:
+            "Failed to load your test cases. Please try refreshing the page.",
           variant: "destructive",
         });
         setTestCases([]);
@@ -301,13 +338,13 @@ const Profile = () => {
   // Save updated user data to Firebase
   const handleSave = async () => {
     if (!userInfo || !userInfo.id) return;
-    
+
     try {
       setUpdating(true);
-      
+
       const form = document.getElementById("profile-form") as HTMLFormElement;
       const formData = new FormData(form);
-      
+
       const updatedUserInfo = {
         ...userInfo,
         name: formData.get("name") as string,
@@ -316,7 +353,7 @@ const Profile = () => {
 
       const database = getDatabase();
       const userRef = ref(database, `users/${userInfo.id}`);
-      
+
       const updateData = {
         name: updatedUserInfo.name,
         email: updatedUserInfo.email,
@@ -325,10 +362,10 @@ const Profile = () => {
       };
 
       await set(userRef, updateData);
-      
+
       setUserInfo(updatedUserInfo);
       setIsEditing(false);
-      
+
       toast({
         title: "Profile updated",
         description: "Your profile information has been saved successfully.",
@@ -346,24 +383,26 @@ const Profile = () => {
   };
 
   // Fetch detailed test case data from Firebase
-  const fetchTestCaseDetails = async (docId: string): Promise<DetailedTestCase | null> => {
+  const fetchTestCaseDetails = async (
+    docId: string
+  ): Promise<DetailedTestCase | null> => {
     try {
       console.log("Fetching detailed test case:", docId);
-      
+
       const database = getDatabase();
       const testCaseRef = ref(database, `testCases/${docId}`);
       const snapshot = await get(testCaseRef);
-      
+
       if (snapshot.exists()) {
         const data = snapshot.val();
         return {
           id: docId,
           testCases: data.testCases || [],
           summary: data.summary || {},
-          metadata: data.metadata || {}
+          metadata: data.metadata || {},
         };
       }
-      
+
       return null;
     } catch (error) {
       console.error("Error fetching test case details:", error);
@@ -376,9 +415,9 @@ const Profile = () => {
     try {
       setLoadingDetails(true);
       setIsModalOpen(true);
-      
+
       const detailedTestCase = await fetchTestCaseDetails(docId);
-      
+
       if (detailedTestCase) {
         setSelectedTestCase(detailedTestCase);
       } else {
@@ -389,7 +428,6 @@ const Profile = () => {
         });
         setIsModalOpen(false);
       }
-      
     } catch (error) {
       console.error("Error viewing test case:", error);
       toast({
@@ -407,10 +445,10 @@ const Profile = () => {
   const downloadTestCase = async (testCase: TestCase) => {
     try {
       console.log("Downloading test case:", testCase.docId);
-      
+
       // First fetch the detailed test case data
       const detailedTestCase = await fetchTestCaseDetails(testCase.docId);
-      
+
       if (!detailedTestCase) {
         toast({
           title: "Download failed",
@@ -422,112 +460,136 @@ const Profile = () => {
 
       // Prepare data for Excel export
       const worksheetData = [];
-      
+
       // Add header information
-      worksheetData.push(['Test Case Report']);
-      worksheetData.push(['Generated Date:', new Date(detailedTestCase.metadata.generatedAt).toLocaleString()]);
-      worksheetData.push(['Created By:', detailedTestCase.metadata.createdBy]);
-      worksheetData.push(['Total Test Cases:', detailedTestCase.summary.totalTestCases]);
-      worksheetData.push(['Requirements Length:', detailedTestCase.metadata.requirementsLength + ' characters']);
+      worksheetData.push(["Test Case Report"]);
+      worksheetData.push([
+        "Generated Date:",
+        new Date(detailedTestCase.metadata.generatedAt).toLocaleString(),
+      ]);
+      worksheetData.push(["Created By:", detailedTestCase.metadata.createdBy]);
+      worksheetData.push([
+        "Total Test Cases:",
+        detailedTestCase.summary.totalTestCases,
+      ]);
+      worksheetData.push([
+        "Requirements Length:",
+        detailedTestCase.metadata.requirementsLength + " characters",
+      ]);
       worksheetData.push([]);
-      
+
       // Add summary information
-      worksheetData.push(['SUMMARY']);
-      worksheetData.push(['Categories Breakdown:']);
-      Object.entries(detailedTestCase.summary.categoriesBreakdown || {}).forEach(([category, count]) => {
+      worksheetData.push(["SUMMARY"]);
+      worksheetData.push(["Categories Breakdown:"]);
+      Object.entries(
+        detailedTestCase.summary.categoriesBreakdown || {}
+      ).forEach(([category, count]) => {
         worksheetData.push([`  ${category}:`, count]);
       });
       worksheetData.push([]);
-      
-      worksheetData.push(['Priority Breakdown:']);
-      Object.entries(detailedTestCase.summary.priorityBreakdown || {}).forEach(([priority, count]) => {
-        worksheetData.push([`  ${priority}:`, count]);
-      });
+
+      worksheetData.push(["Priority Breakdown:"]);
+      Object.entries(detailedTestCase.summary.priorityBreakdown || {}).forEach(
+        ([priority, count]) => {
+          worksheetData.push([`  ${priority}:`, count]);
+        }
+      );
       worksheetData.push([]);
-      
-      worksheetData.push(['Compliance Standards:', (detailedTestCase.summary.complianceStandardsCovered || []).join(', ')]);
-      worksheetData.push(['Risk Assessment:', detailedTestCase.summary.overallRiskAssessment]);
+
+      worksheetData.push([
+        "Compliance Standards:",
+        (detailedTestCase.summary.complianceStandardsCovered || []).join(", "),
+      ]);
+      worksheetData.push([
+        "Risk Assessment:",
+        detailedTestCase.summary.overallRiskAssessment,
+      ]);
       worksheetData.push([]);
-      
+
       // Add original requirements
-      worksheetData.push(['ORIGINAL REQUIREMENTS']);
+      worksheetData.push(["ORIGINAL REQUIREMENTS"]);
       worksheetData.push([detailedTestCase.metadata.originalRequirements]);
       worksheetData.push([]);
-      
+
       // Add detailed test cases
-      worksheetData.push(['DETAILED TEST CASES']);
+      worksheetData.push(["DETAILED TEST CASES"]);
       worksheetData.push([]);
-      
+
       detailedTestCase.testCases.forEach((tc, index) => {
         worksheetData.push([`TEST CASE ${index + 1}: ${tc.title}`]);
-        worksheetData.push(['ID:', tc.id]);
-        worksheetData.push(['Description:', tc.description]);
-        worksheetData.push(['Category:', tc.category]);
-        worksheetData.push(['Priority:', tc.priority]);
-        worksheetData.push(['Risk Level:', tc.riskLevel]);
-        worksheetData.push(['Estimated Duration:', tc.estimatedDuration]);
-        worksheetData.push(['Automation Potential:', tc.automationPotential]);
-        worksheetData.push(['Requirement ID:', tc.requirementId]);
-        worksheetData.push(['Traceability:', tc.traceabilityLink]);
-        worksheetData.push(['Compliance Standards:', (tc.complianceStandards || []).join(', ')]);
+        worksheetData.push(["ID:", tc.id]);
+        worksheetData.push(["Description:", tc.description]);
+        worksheetData.push(["Category:", tc.category]);
+        worksheetData.push(["Priority:", tc.priority]);
+        worksheetData.push(["Risk Level:", tc.riskLevel]);
+        worksheetData.push(["Estimated Duration:", tc.estimatedDuration]);
+        worksheetData.push(["Automation Potential:", tc.automationPotential]);
+        worksheetData.push(["Requirement ID:", tc.requirementId]);
+        worksheetData.push(["Traceability:", tc.traceabilityLink]);
+        worksheetData.push([
+          "Compliance Standards:",
+          (tc.complianceStandards || []).join(", "),
+        ]);
         worksheetData.push([]);
-        
+
         // Preconditions
-        worksheetData.push(['Preconditions:']);
+        worksheetData.push(["Preconditions:"]);
         (tc.preconditions || []).forEach((precondition, idx) => {
           worksheetData.push([`  ${idx + 1}. ${precondition}`]);
         });
         worksheetData.push([]);
-        
+
         // Test Steps
-        worksheetData.push(['Test Steps:']);
+        worksheetData.push(["Test Steps:"]);
         (tc.testSteps || []).forEach((step) => {
           worksheetData.push([`  Step ${step.stepNumber}:`]);
           worksheetData.push([`    Action: ${step.action}`]);
           worksheetData.push([`    Expected Result: ${step.expectedResult}`]);
         });
         worksheetData.push([]);
-        
+
         // Expected Results
-        worksheetData.push(['Overall Expected Results:', tc.expectedResults]);
+        worksheetData.push(["Overall Expected Results:", tc.expectedResults]);
         worksheetData.push([]);
-        
+
         // Test Data
         if (tc.testData) {
-          worksheetData.push(['Test Data:']);
-          worksheetData.push(['  Inputs:', tc.testData.inputs]);
-          worksheetData.push(['  Expected Outputs:', tc.testData.outputs]);
+          worksheetData.push(["Test Data:"]);
+          worksheetData.push(["  Inputs:", tc.testData.inputs]);
+          worksheetData.push(["  Expected Outputs:", tc.testData.outputs]);
         }
         worksheetData.push([]);
-        worksheetData.push(['=' .repeat(50)]);
+        worksheetData.push(["=".repeat(50)]);
         worksheetData.push([]);
       });
 
       // Create workbook and worksheet
       const workbook = XLSX.utils.book_new();
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-      
+
       // Set column widths
       const maxWidth = 100;
-      worksheet['!cols'] = [
+      worksheet["!cols"] = [
         { wch: 25 }, // Column A
-        { wch: maxWidth } // Column B
+        { wch: maxWidth }, // Column B
       ];
-      
+
       // Add worksheet to workbook
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Test Cases');
-      
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Test Cases");
+
       // Generate filename
-      const fileName = `TestCases_${testCase.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
-      
+      const fileName = `TestCases_${testCase.title.replace(
+        /[^a-zA-Z0-9]/g,
+        "_"
+      )}_${new Date().toISOString().split("T")[0]}.xlsx`;
+
       // Download file
       XLSX.writeFile(workbook, fileName);
-      
+
       toast({
         title: "Download started",
         description: `Test cases exported to ${fileName}`,
       });
-      
     } catch (error) {
       console.error("Error downloading test case:", error);
       toast({
@@ -542,10 +604,10 @@ const Profile = () => {
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'short',
-        day: 'numeric'
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
       });
     } catch (error) {
       return "Unknown";
@@ -556,9 +618,9 @@ const Profile = () => {
   const formatJoinDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long' 
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
       });
     } catch (error) {
       return "Recently";
@@ -590,11 +652,13 @@ const Profile = () => {
     return (
       <div className="container max-w-4xl mx-auto p-6">
         <div className="text-center space-y-4">
-          <h1 className="text-2xl font-bold text-foreground">Profile Not Found</h1>
-          <p className="text-muted-foreground">Unable to load your profile information.</p>
-          <Button onClick={() => window.location.reload()}>
-            Try Again
-          </Button>
+          <h1 className="text-2xl font-bold text-foreground">
+            Profile Not Found
+          </h1>
+          <p className="text-muted-foreground">
+            Unable to load your profile information.
+          </p>
+          <Button onClick={() => window.location.reload()}>Try Again</Button>
         </div>
       </div>
     );
@@ -640,7 +704,12 @@ const Profile = () => {
                 <div className="grid grid-cols-2 gap-4 text-center">
                   <div>
                     <p className="text-2xl font-bold text-primary">
-                      {loadingTestCases ? "..." : testCases.reduce((sum, tc) => sum + tc.testCasesCount, 0)}
+                      {loadingTestCases
+                        ? "..."
+                        : testCases.reduce(
+                            (sum, tc) => sum + tc.testCasesCount,
+                            0
+                          )}
                     </p>
                     <p className="text-xs text-muted-foreground">Test Cases</p>
                   </div>
@@ -740,6 +809,18 @@ const Profile = () => {
                         />
                       </div>
                     </div>
+
+                    {/* Connect to Jira Button */}
+                    <div className="pt-4 border-t border-glass-border">
+                      <Button
+                        variant="default"
+                        className="w-full glass-button"
+                        onClick={CallJiraConnect}
+                      >
+                        <Building className="h-4 w-4 mr-2" />
+                        Connect to Jira
+                      </Button>
+                    </div>
                   </form>
                 </CardContent>
               </TabsContent>
@@ -750,21 +831,25 @@ const Profile = () => {
                     <div className="flex items-center justify-center py-8">
                       <div className="text-center space-y-4">
                         <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-                        <p className="text-muted-foreground">Loading test cases...</p>
+                        <p className="text-muted-foreground">
+                          Loading test cases...
+                        </p>
                       </div>
                     </div>
                   ) : testCases.length === 0 ? (
                     <div className="text-center py-8 space-y-4">
                       <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
                       <div>
-                        <h3 className="font-semibold text-foreground">No test cases found</h3>
+                        <h3 className="font-semibold text-foreground">
+                          No test cases found
+                        </h3>
                         <p className="text-muted-foreground text-sm">
-                          You haven't generated any test cases yet. 
+                          You haven't generated any test cases yet.
                         </p>
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           className="mt-4"
-                          onClick={() => navigate('/upload')}
+                          onClick={() => navigate("/upload")}
                         >
                           Create Test Cases
                         </Button>
@@ -786,19 +871,36 @@ const Profile = () => {
                               </div>
                               <div className="flex items-center space-x-4 text-xs text-muted-foreground">
                                 <span>{formatDate(testCase.generatedAt)}</span>
-                                <span>{testCase.testCasesCount} test cases</span>
+                                <span>
+                                  {testCase.testCasesCount} test cases
+                                </span>
                                 <span>{testCase.requirementsLength} chars</span>
                               </div>
-                              {testCase.summary?.complianceStandardsCovered?.length > 0 && (
+                              {testCase.summary?.complianceStandardsCovered
+                                ?.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-2">
-                                  {testCase.summary.complianceStandardsCovered.slice(0, 3).map((standard) => (
-                                    <Badge key={standard} variant="secondary" className="text-xs">
-                                      {standard}
-                                    </Badge>
-                                  ))}
-                                  {testCase.summary.complianceStandardsCovered.length > 3 && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      +{testCase.summary.complianceStandardsCovered.length - 3} more
+                                  {testCase.summary.complianceStandardsCovered
+                                    .slice(0, 3)
+                                    .map((standard) => (
+                                      <Badge
+                                        key={standard}
+                                        variant="secondary"
+                                        className="text-xs"
+                                      >
+                                        {standard}
+                                      </Badge>
+                                    ))}
+                                  {testCase.summary.complianceStandardsCovered
+                                    .length > 3 && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-xs"
+                                    >
+                                      +
+                                      {testCase.summary
+                                        .complianceStandardsCovered.length -
+                                        3}{" "}
+                                      more
                                     </Badge>
                                   )}
                                 </div>
@@ -814,16 +916,16 @@ const Profile = () => {
                               >
                                 {getTestCaseStatus(testCase)}
                               </Badge>
-                              <Button 
-                                variant="ghost" 
+                              <Button
+                                variant="ghost"
                                 size="sm"
                                 onClick={() => viewTestCase(testCase.docId)}
                                 title="View details"
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
+                              <Button
+                                variant="ghost"
                                 size="sm"
                                 onClick={() => downloadTestCase(testCase)}
                                 title="Download"
@@ -853,9 +955,14 @@ const Profile = () => {
             <DialogDescription>
               {selectedTestCase && (
                 <>
-                  Generated on {new Date(selectedTestCase.metadata.generatedAt).toLocaleDateString()} • 
-                  {selectedTestCase.summary.totalTestCases} test cases • 
-                  Created by {selectedTestCase.metadata.userName || selectedTestCase.metadata.createdBy}
+                  Generated on{" "}
+                  {new Date(
+                    selectedTestCase.metadata.generatedAt
+                  ).toLocaleDateString()}{" "}
+                  •{selectedTestCase.summary.totalTestCases} test cases •
+                  Created by{" "}
+                  {selectedTestCase.metadata.userName ||
+                    selectedTestCase.metadata.createdBy}
                 </>
               )}
             </DialogDescription>
@@ -866,7 +973,9 @@ const Profile = () => {
               <div className="flex items-center justify-center py-8">
                 <div className="text-center space-y-4">
                   <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-                  <p className="text-muted-foreground">Loading test case details...</p>
+                  <p className="text-muted-foreground">
+                    Loading test case details...
+                  </p>
                 </div>
               </div>
             ) : selectedTestCase ? (
@@ -880,20 +989,29 @@ const Profile = () => {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label>Total Test Cases</Label>
-                        <p className="text-2xl font-bold text-primary">{selectedTestCase.summary.totalTestCases}</p>
+                        <p className="text-2xl font-bold text-primary">
+                          {selectedTestCase.summary.totalTestCases}
+                        </p>
                       </div>
                       <div>
                         <Label>Requirements Length</Label>
-                        <p className="text-lg">{selectedTestCase.metadata.requirementsLength} characters</p>
+                        <p className="text-lg">
+                          {selectedTestCase.metadata.requirementsLength}{" "}
+                          characters
+                        </p>
                       </div>
                     </div>
-                    
+
                     {/* Categories Breakdown */}
-                    {Object.keys(selectedTestCase.summary.categoriesBreakdown || {}).length > 0 && (
+                    {Object.keys(
+                      selectedTestCase.summary.categoriesBreakdown || {}
+                    ).length > 0 && (
                       <div>
                         <Label>Categories Breakdown</Label>
                         <div className="flex flex-wrap gap-2 mt-2">
-                          {Object.entries(selectedTestCase.summary.categoriesBreakdown).map(([category, count]) => (
+                          {Object.entries(
+                            selectedTestCase.summary.categoriesBreakdown
+                          ).map(([category, count]) => (
                             <Badge key={category} variant="secondary">
                               {category}: {count}
                             </Badge>
@@ -901,13 +1019,17 @@ const Profile = () => {
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Priority Breakdown */}
-                    {Object.keys(selectedTestCase.summary.priorityBreakdown || {}).length > 0 && (
+                    {Object.keys(
+                      selectedTestCase.summary.priorityBreakdown || {}
+                    ).length > 0 && (
                       <div>
                         <Label>Priority Breakdown</Label>
                         <div className="flex flex-wrap gap-2 mt-2">
-                          {Object.entries(selectedTestCase.summary.priorityBreakdown).map(([priority, count]) => (
+                          {Object.entries(
+                            selectedTestCase.summary.priorityBreakdown
+                          ).map(([priority, count]) => (
                             <Badge key={priority} variant="outline">
                               {priority}: {count}
                             </Badge>
@@ -915,21 +1037,24 @@ const Profile = () => {
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Compliance Standards */}
-                    {selectedTestCase.summary.complianceStandardsCovered?.length > 0 && (
+                    {selectedTestCase.summary.complianceStandardsCovered
+                      ?.length > 0 && (
                       <div>
                         <Label>Compliance Standards</Label>
                         <div className="flex flex-wrap gap-2 mt-2">
-                          {selectedTestCase.summary.complianceStandardsCovered.map((standard) => (
-                            <Badge key={standard} variant="default">
-                              {standard}
-                            </Badge>
-                          ))}
+                          {selectedTestCase.summary.complianceStandardsCovered.map(
+                            (standard) => (
+                              <Badge key={standard} variant="default">
+                                {standard}
+                              </Badge>
+                            )
+                          )}
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Risk Assessment */}
                     {selectedTestCase.summary.overallRiskAssessment && (
                       <div>
@@ -965,19 +1090,30 @@ const Profile = () => {
                     <Card key={testCase.id || index}>
                       <CardHeader>
                         <div className="flex items-center justify-between">
-                          <CardTitle className="text-base">{testCase.title}</CardTitle>
+                          <CardTitle className="text-base">
+                            {testCase.title}
+                          </CardTitle>
                           <div className="flex gap-2">
                             <Badge variant="outline">{testCase.category}</Badge>
-                            <Badge variant={
-                              testCase.priority === 'High' ? 'destructive' :
-                              testCase.priority === 'Medium' ? 'default' : 'secondary'
-                            }>
+                            <Badge
+                              variant={
+                                testCase.priority === "High"
+                                  ? "destructive"
+                                  : testCase.priority === "Medium"
+                                  ? "default"
+                                  : "secondary"
+                              }
+                            >
                               {testCase.priority}
                             </Badge>
-                            <Badge variant="outline">{testCase.riskLevel}</Badge>
+                            <Badge variant="outline">
+                              {testCase.riskLevel}
+                            </Badge>
                           </div>
                         </div>
-                        <CardDescription>{testCase.description}</CardDescription>
+                        <CardDescription>
+                          {testCase.description}
+                        </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
@@ -987,53 +1123,69 @@ const Profile = () => {
                           </div>
                           <div>
                             <Label>Estimated Duration</Label>
-                            <p className="text-sm">{testCase.estimatedDuration}</p>
+                            <p className="text-sm">
+                              {testCase.estimatedDuration}
+                            </p>
                           </div>
                           <div>
                             <Label>Automation Potential</Label>
-                            <p className="text-sm">{testCase.automationPotential}</p>
+                            <p className="text-sm">
+                              {testCase.automationPotential}
+                            </p>
                           </div>
                           <div>
                             <Label>Requirement ID</Label>
                             <p className="text-sm">{testCase.requirementId}</p>
                           </div>
                         </div>
-                        
+
                         {/* Compliance Standards for this test case */}
                         {testCase.complianceStandards?.length > 0 && (
                           <div>
                             <Label>Compliance Standards</Label>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {testCase.complianceStandards.map((standard) => (
-                                <Badge key={standard} variant="secondary" className="text-xs">
+                                <Badge
+                                  key={standard}
+                                  variant="secondary"
+                                  className="text-xs"
+                                >
                                   {standard}
                                 </Badge>
                               ))}
                             </div>
                           </div>
                         )}
-                        
+
                         {/* Preconditions */}
                         {testCase.preconditions?.length > 0 && (
                           <div>
                             <Label>Preconditions</Label>
                             <ul className="list-disc list-inside text-sm mt-1 space-y-1">
-                              {testCase.preconditions.map((precondition, idx) => (
-                                <li key={idx}>{precondition}</li>
-                              ))}
+                              {testCase.preconditions.map(
+                                (precondition, idx) => (
+                                  <li key={idx}>{precondition}</li>
+                                )
+                              )}
                             </ul>
                           </div>
                         )}
-                        
+
                         {/* Test Steps */}
                         {testCase.testSteps?.length > 0 && (
                           <div>
                             <Label>Test Steps</Label>
                             <div className="space-y-2 mt-2">
                               {testCase.testSteps.map((step, stepIdx) => (
-                                <div key={stepIdx} className="border rounded-lg p-3">
+                                <div
+                                  key={stepIdx}
+                                  className="border rounded-lg p-3"
+                                >
                                   <div className="flex items-start gap-2">
-                                    <Badge variant="outline" className="text-xs">
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs"
+                                    >
                                       Step {step.stepNumber}
                                     </Badge>
                                   </div>
@@ -1043,8 +1195,12 @@ const Profile = () => {
                                       <p className="text-sm">{step.action}</p>
                                     </div>
                                     <div>
-                                      <Label className="text-xs">Expected Result:</Label>
-                                      <p className="text-sm">{step.expectedResult}</p>
+                                      <Label className="text-xs">
+                                        Expected Result:
+                                      </Label>
+                                      <p className="text-sm">
+                                        {step.expectedResult}
+                                      </p>
                                     </div>
                                   </div>
                                 </div>
@@ -1052,41 +1208,53 @@ const Profile = () => {
                             </div>
                           </div>
                         )}
-                        
+
                         {/* Expected Results */}
                         {testCase.expectedResults && (
                           <div>
                             <Label>Overall Expected Results</Label>
-                            <p className="text-sm mt-1">{testCase.expectedResults}</p>
+                            <p className="text-sm mt-1">
+                              {testCase.expectedResults}
+                            </p>
                           </div>
                         )}
-                        
+
                         {/* Test Data */}
-                        {testCase.testData && (testCase.testData.inputs || testCase.testData.outputs) && (
-                          <div>
-                            <Label>Test Data</Label>
-                            <div className="mt-2 space-y-2">
-                              {testCase.testData.inputs && (
-                                <div>
-                                  <Label className="text-xs">Inputs:</Label>
-                                  <p className="text-sm bg-muted/50 p-2 rounded">{testCase.testData.inputs}</p>
-                                </div>
-                              )}
-                              {testCase.testData.outputs && (
-                                <div>
-                                  <Label className="text-xs">Expected Outputs:</Label>
-                                  <p className="text-sm bg-muted/50 p-2 rounded">{testCase.testData.outputs}</p>
-                                </div>
-                              )}
+                        {testCase.testData &&
+                          (testCase.testData.inputs ||
+                            testCase.testData.outputs) && (
+                            <div>
+                              <Label>Test Data</Label>
+                              <div className="mt-2 space-y-2">
+                                {testCase.testData.inputs && (
+                                  <div>
+                                    <Label className="text-xs">Inputs:</Label>
+                                    <p className="text-sm bg-muted/50 p-2 rounded">
+                                      {testCase.testData.inputs}
+                                    </p>
+                                  </div>
+                                )}
+                                {testCase.testData.outputs && (
+                                  <div>
+                                    <Label className="text-xs">
+                                      Expected Outputs:
+                                    </Label>
+                                    <p className="text-sm bg-muted/50 p-2 rounded">
+                                      {testCase.testData.outputs}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                        
+                          )}
+
                         {/* Traceability Link */}
                         {testCase.traceabilityLink && (
                           <div>
                             <Label>Traceability Link</Label>
-                            <p className="text-sm mt-1">{testCase.traceabilityLink}</p>
+                            <p className="text-sm mt-1">
+                              {testCase.traceabilityLink}
+                            </p>
                           </div>
                         )}
                       </CardContent>
@@ -1096,7 +1264,9 @@ const Profile = () => {
               </div>
             ) : (
               <div className="text-center py-8">
-                <p className="text-muted-foreground">No test case data available</p>
+                <p className="text-muted-foreground">
+                  No test case data available
+                </p>
               </div>
             )}
           </ScrollArea>
@@ -1104,15 +1274,14 @@ const Profile = () => {
           {/* Modal Actions */}
           {selectedTestCase && !loadingDetails && (
             <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button
-                variant="outline"
-                onClick={() => setIsModalOpen(false)}
-              >
+              <Button variant="outline" onClick={() => setIsModalOpen(false)}>
                 Close
               </Button>
               <Button
                 onClick={() => {
-                  const testCase = testCases.find(tc => tc.docId === selectedTestCase.id);
+                  const testCase = testCases.find(
+                    (tc) => tc.docId === selectedTestCase.id
+                  );
                   if (testCase) {
                     downloadTestCase(testCase);
                   }
