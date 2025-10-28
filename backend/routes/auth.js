@@ -6,6 +6,7 @@ const axios = require('axios');
 const FIREBASE_URL = `${process.env.DATABASE_URL}/users.json`;
 
 // POST /signup route
+// POST /signup route
 router.post('/signup', async function(req, res) {
   const { name, email, password } = req.body;
   
@@ -31,8 +32,12 @@ router.post('/signup', async function(req, res) {
     // Step 3: Create new user
     const postResponse = await axios.post(FIREBASE_URL, { name, email, password });
     
+    // ✅ FIXED: Extract the Firebase-generated user ID
+    const newUserId = postResponse.data.name;
+    
     // Step 4: Automatically log in the user after signup
     req.session.user = { 
+      id: newUserId,  // ✅ ADDED: Include user ID
       email: email, 
       name: name 
     };
@@ -43,6 +48,8 @@ router.post('/signup', async function(req, res) {
         console.error('Session save error after signup:', err);
         return res.status(500).json({ error: 'Session error' });
       }
+      
+      console.log('Signup successful, session saved:', req.session.user);
       
       res.status(201).json({
         message: 'User signed up successfully!',
@@ -56,7 +63,6 @@ router.post('/signup', async function(req, res) {
     res.status(500).json({ error: 'Failed to sign up user.' });
   }
 });
-
 // POST /login route
 router.post('/login', async function(req, res) {
   const { email, password } = req.body;
@@ -115,6 +121,7 @@ router.post('/login', async function(req, res) {
 });
 
 // POST /google-signup route - Handle Google OAuth signup
+// POST /google-signup route - Handle Google OAuth signup
 router.post('/google-signup', async function(req, res) {
   const { uid, name, email, photoURL } = req.body;
   
@@ -142,7 +149,7 @@ router.post('/google-signup', async function(req, res) {
       const [userId, userData] = existingUser;
       
       req.session.user = { 
-        id: userId,
+        id: userId,  // ✅ ADDED: Include userId
         email: userData.email, 
         name: userData.name,
         photoURL: userData.photoURL || photoURL
@@ -153,6 +160,8 @@ router.post('/google-signup', async function(req, res) {
           console.error('Session save error after Google login:', err);
           return res.status(500).json({ message: 'Session error' });
         }
+        
+        console.log('Google login successful (existing user), session saved:', req.session.user);
         
         res.status(200).json({
           message: 'Google login successful (existing user)!',
@@ -175,8 +184,12 @@ router.post('/google-signup', async function(req, res) {
     
     const postResponse = await axios.post(FIREBASE_URL, newUser);
     
-    // Step 4: Log in the user after signup
+    // ✅ FIXED: Extract the Firebase-generated user ID
+    const newUserId = postResponse.data.name; // Firebase returns {name: "-N1234..."} with the new ID
+    
+    // Step 4: Log in the user after signup with the user ID
     req.session.user = { 
+      id: newUserId,  // ✅ ADDED: Include the new user ID
       email: email, 
       name: name,
       photoURL: photoURL
@@ -187,6 +200,8 @@ router.post('/google-signup', async function(req, res) {
         console.error('Session save error after Google signup:', err);
         return res.status(500).json({ message: 'Session error' });
       }
+      
+      console.log('Google signup successful, session saved:', req.session.user);
       
       res.status(201).json({
         message: 'Google signup successful!',
@@ -255,7 +270,7 @@ router.post('/google-login', async function(req, res) {
 
     // Store user in session
     req.session.user = { 
-      id: userId,
+      id: userId,  // ✅ This was already correct
       email: user.email, 
       name: user.name,
       photoURL: photoURL || user.photoURL
@@ -283,7 +298,6 @@ router.post('/google-login', async function(req, res) {
     });
   }
 });
-
 // GET /check route - Check if user is logged in
 router.get('/check', (req, res) => {
   console.log('Auth check - Session ID:', req.sessionID);
