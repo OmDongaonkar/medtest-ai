@@ -650,7 +650,7 @@ const CallJiraFetch = async () => {
         description: "Your test cases have been generated successfully.",
       });
       
-      navigate("/output", { state: { testCases: result } });
+      navigate("/chat", { state: { testCases: result } });
       
     } catch (error) {
       console.error("Error generating test cases:", error);
