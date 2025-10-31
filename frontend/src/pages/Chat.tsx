@@ -1,3 +1,4 @@
+import axios from "axios";
 import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,7 +27,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import { getDatabase, ref, get } from "firebase/database";
-import * as XLSX from 'xlsx';
 import {
   Card,
   CardContent,
@@ -36,6 +36,12 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+// Import controller functions
+import { exportToPDF } from "@/controllers/download-pdf";
+import { exportToExcel } from "@/controllers/download-excel";
+import { exportToXML } from "@/controllers/download-xml";
+import { exportToJira } from "@/controllers/export-jira";
 
 interface TestCaseDetail {
   id: string;
@@ -65,13 +71,15 @@ interface TestCaseDetail {
 interface TestCaseData {
   id: string;
   testCases: TestCaseDetail[];
-  summary: {
-    totalTestCases: number;
-    categoriesBreakdown: Record<string, number>;
-    priorityBreakdown: Record<string, number>;
-    complianceStandardsCovered: string[];
-    overallRiskAssessment: string;
-  } | Record<string, never>;
+  summary:
+    | {
+        totalTestCases: number;
+        categoriesBreakdown: Record<string, number>;
+        priorityBreakdown: Record<string, number>;
+        complianceStandardsCovered: string[];
+        overallRiskAssessment: string;
+      }
+    | Record<string, never>;
   metadata: {
     generatedAt: string;
     requirementsLength: number;
@@ -91,11 +99,11 @@ const ChatInterface = () => {
   const [testCaseData, setTestCaseData] = useState<TestCaseData | null>(null);
   const [selectedTestCase, setSelectedTestCase] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  
+
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -114,55 +122,60 @@ const ChatInterface = () => {
       try {
         setLoading(true);
 
-        // Check if test case data was passed from the upload page
+        // PRIORITY 1: Check if test case was passed from Profile via navigation state
+        if (location.state?.testCase) {
+          setTestCaseData(location.state.testCase);
+          setLoading(false);
+          return;
+        }
+
+        // PRIORITY 2: Check if test case data was passed from the upload page
         if (location.state?.testCases) {
-          console.log("Using test case data from state:", location.state.testCases);
           setTestCaseData(location.state.testCases);
           setLoading(false);
           return;
         }
 
-        // If no data in state, fetch the latest test case from Firebase
+        // PRIORITY 3: If no data in state, fetch the latest test case from Firebase
         if (!user?.email) {
-          console.log("No user email available");
           setLoading(false);
           return;
         }
 
-        console.log("Fetching latest test case for user:", user.email);
-        
         const database = getDatabase();
-        const testCasesRef = ref(database, 'testCases');
+        const testCasesRef = ref(database, "testCases");
         const snapshot = await get(testCasesRef);
-        
+
         if (snapshot.exists()) {
           const allTestCases = snapshot.val();
           let latestTestCase: TestCaseData | null = null;
           let latestTimestamp = 0;
-          
+
           // Find the most recent test case for this user
-          Object.keys(allTestCases).forEach(testCaseId => {
+          Object.keys(allTestCases).forEach((testCaseId) => {
             const testCase = allTestCases[testCaseId];
-            
-            if (testCase.metadata?.createdBy === user.email || 
-                testCase.metadata?.userEmail === user.email) {
-              
-              const timestamp = new Date(testCase.metadata?.generatedAt || 0).getTime();
-              
+
+            if (
+              testCase.metadata?.createdBy === user.email ||
+              testCase.metadata?.userEmail === user.email
+            ) {
+              const timestamp = new Date(
+                testCase.metadata?.generatedAt || 0
+              ).getTime();
+
               if (timestamp > latestTimestamp) {
                 latestTimestamp = timestamp;
                 latestTestCase = {
                   id: testCaseId,
                   testCases: testCase.testCases || [],
                   summary: testCase.summary || {},
-                  metadata: testCase.metadata || {}
+                  metadata: testCase.metadata || {},
                 };
               }
             }
           });
-          
+
           if (latestTestCase) {
-            console.log("Found latest test case:", latestTestCase.id);
             setTestCaseData(latestTestCase);
           } else {
             console.log("No test cases found for user");
@@ -170,9 +183,7 @@ const ChatInterface = () => {
         } else {
           console.log("No test cases collection exists");
         }
-        
       } catch (error) {
-        console.error("Error fetching test cases:", error);
         toast({
           title: "Error loading test cases",
           description: "Failed to load your test cases. Please try again.",
@@ -199,326 +210,44 @@ const ChatInterface = () => {
         Math.min(textareaRef.current.scrollHeight, 150) + "px";
     }
   }, [inputValue]);
-  
-  // Replace the exportToJira function in your ChatInterface component with this:
 
-const exportToJira = async () => {
-  if (!testCaseData) {
-    toast({
-      title: "No test cases",
-      description: "No test cases available to export",
-      variant: "destructive",
-    });
-    return;
-  }
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "auto";
+    };
+  }, []);
 
-  try {
-    console.log("🚀 Starting Jira export...");
-    
-    // Check Jira connection status
-    const statusResponse = await fetch(`${import.meta.env.VITE_REQUEST_URL}/integrations/jira/status`, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
-    
-    console.log("Status response:", statusResponse.status, statusResponse.statusText);
-    
-    if (!statusResponse.ok) {
-      const errorText = await statusResponse.text();
-      console.error("Status check failed:", errorText);
-      
-      toast({
-        title: "Authentication required",
-        description: "Please connect your Jira account first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const statusData = await statusResponse.json();
-    console.log("Jira status:", statusData);
-    
-    if (!statusData.connected) {
-      toast({
-        title: "Jira not connected",
-        description: "Please connect your Jira account to export test cases",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Fetch available projects
-    const projectsResponse = await fetch(`${import.meta.env.VITE_REQUEST_URL}/integrations/jira/projects`, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
-
-    console.log("Projects response:", projectsResponse.status);
-
-    if (!projectsResponse.ok) {
-      const errorText = await projectsResponse.text();
-      console.error("Projects fetch failed:", errorText);
-      throw new Error('Failed to fetch Jira projects');
-    }
-
-    const projectsData = await projectsResponse.json();
-    console.log("Projects data:", projectsData);
-    
-    if (!projectsData.projects || projectsData.projects.length === 0) {
-      toast({
-        title: "No projects found",
-        description: "No Jira projects found in your account",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Use the first project or let user select (you can enhance this with a modal)
-    const selectedProject = projectsData.projects[0];
-    console.log("📋 Selected project:", selectedProject.key);
-
-    toast({
-      title: "Exporting to Jira",
-      description: `Starting export of ${testCases.length} test cases to ${selectedProject.name}...`,
-    });
-
-    // Export each test case as a Jira issue
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const testCase of testCases) {
-      try {
-        // Format test case description for Jira
-        const description = formatTestCaseForJira(testCase);
-
-        const issueData = {
-          projectKey: selectedProject.key,
-          summary: `${testCase.id}: ${testCase.title}`,
-          description: description,
-          issueType: "Task" // or "Test" if your Jira has that issue type
-        };
-
-        console.log(`Creating issue for ${testCase.id}...`);
-
-        const createResponse = await fetch(`${import.meta.env.VITE_REQUEST_URL}/integrations/jira/issue`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(issueData)
-        });
-
-        if (createResponse.ok) {
-          successCount++;
-          console.log(`✅ Created issue for ${testCase.id}`);
-        } else {
-          failCount++;
-          const errorText = await createResponse.text();
-          console.error(`❌ Failed to create issue for ${testCase.id}:`, errorText);
-        }
-
-        // Add a small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-      } catch (error) {
-        failCount++;
-        console.error(`Error creating issue for ${testCase.id}:`, error);
-      }
-    }
-
-    // Show final result
-    if (successCount > 0) {
-      toast({
-        title: "Export completed",
-        description: `Successfully exported ${successCount} test case${successCount > 1 ? 's' : ''} to Jira${failCount > 0 ? `. ${failCount} failed.` : ''}`,
-      });
-    } else {
-      toast({
-        title: "Export failed",
-        description: "No test cases were exported successfully",
-        variant: "destructive",
-      });
-    }
-
-  } catch (error) {
-    console.error("Error exporting to Jira:", error);
-    toast({
-      title: "Export failed",
-      description: error instanceof Error ? error.message : "Failed to export test cases to Jira. Please try again.",
-      variant: "destructive",
-    });
-  }
-};
-
-// Helper function to format test case description for Jira
-const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
-  let description = `**Description:**\n${testCase.description}\n\n`;
-  
-  description += `**Category:** ${testCase.category}\n`;
-  description += `**Priority:** ${testCase.priority}\n`;
-  description += `**Risk Level:** ${testCase.riskLevel}\n`;
-  description += `**Estimated Duration:** ${testCase.estimatedDuration}\n\n`;
-  
-  if (testCase.preconditions && testCase.preconditions.length > 0) {
-    description += `**Preconditions:**\n`;
-    testCase.preconditions.forEach((pre, idx) => {
-      description += `${idx + 1}. ${pre}\n`;
-    });
-    description += `\n`;
-  }
-  
-  description += `**Test Steps:**\n`;
-  testCase.testSteps.forEach((step) => {
-    description += `\n**Step ${step.stepNumber}:**\n`;
-    description += `Action: ${step.action}\n`;
-    description += `Expected Result: ${step.expectedResult}\n`;
-  });
-  
-  description += `\n**Overall Expected Results:**\n${testCase.expectedResults}\n\n`;
-  
-  if (testCase.testData) {
-    description += `**Test Data:**\n`;
-    description += `Inputs: ${testCase.testData.inputs}\n`;
-    description += `Expected Outputs: ${testCase.testData.outputs}\n\n`;
-  }
-  
-  description += `**Compliance Standards:**\n${testCase.complianceStandards.join(', ')}\n\n`;
-  description += `**Requirement ID:** ${testCase.requirementId}\n`;
-  description += `**Traceability:** ${testCase.traceabilityLink}\n`;
-  description += `**Automation Potential:** ${testCase.automationPotential}`;
-  
-  return description;
-};
-  // Export to Excel
-  const exportToExcel = () => {
-    if (!testCaseData) return;
-
-    try {
-      console.log("Exporting test cases to Excel");
-      
-      const worksheetData = [];
-      
-      worksheetData.push(['Test Case Report']);
-      worksheetData.push(['Generated Date:', new Date(testCaseData.metadata.generatedAt).toLocaleString()]);
-      worksheetData.push(['Created By:', testCaseData.metadata.createdBy]);
-      worksheetData.push(['Total Test Cases:', testCaseData.summary.totalTestCases]);
-      worksheetData.push(['Requirements Length:', testCaseData.metadata.requirementsLength + ' characters']);
-      worksheetData.push([]);
-      
-      worksheetData.push(['SUMMARY']);
-      worksheetData.push(['Categories Breakdown:']);
-      Object.entries(testCaseData.summary.categoriesBreakdown || {}).forEach(([category, count]) => {
-        worksheetData.push([`  ${category}:`, count]);
-      });
-      worksheetData.push([]);
-      
-      worksheetData.push(['Priority Breakdown:']);
-      Object.entries(testCaseData.summary.priorityBreakdown || {}).forEach(([priority, count]) => {
-        worksheetData.push([`  ${priority}:`, count]);
-      });
-      worksheetData.push([]);
-      
-      worksheetData.push(['Compliance Standards:', (testCaseData.summary.complianceStandardsCovered || []).join(', ')]);
-      worksheetData.push(['Risk Assessment:', testCaseData.summary.overallRiskAssessment]);
-      worksheetData.push([]);
-      
-      worksheetData.push(['ORIGINAL REQUIREMENTS']);
-      worksheetData.push([testCaseData.metadata.originalRequirements]);
-      worksheetData.push([]);
-      
-      worksheetData.push(['DETAILED TEST CASES']);
-      worksheetData.push([]);
-      
-      testCaseData.testCases.forEach((tc, index) => {
-        worksheetData.push([`TEST CASE ${index + 1}: ${tc.title}`]);
-        worksheetData.push(['ID:', tc.id]);
-        worksheetData.push(['Description:', tc.description]);
-        worksheetData.push(['Category:', tc.category]);
-        worksheetData.push(['Priority:', tc.priority]);
-        worksheetData.push(['Risk Level:', tc.riskLevel]);
-        worksheetData.push(['Estimated Duration:', tc.estimatedDuration]);
-        worksheetData.push(['Automation Potential:', tc.automationPotential]);
-        worksheetData.push(['Requirement ID:', tc.requirementId]);
-        worksheetData.push(['Traceability:', tc.traceabilityLink]);
-        worksheetData.push(['Compliance Standards:', (tc.complianceStandards || []).join(', ')]);
-        worksheetData.push([]);
-        
-        worksheetData.push(['Preconditions:']);
-        (tc.preconditions || []).forEach((precondition, idx) => {
-          worksheetData.push([`  ${idx + 1}. ${precondition}`]);
-        });
-        worksheetData.push([]);
-        
-        worksheetData.push(['Test Steps:']);
-        (tc.testSteps || []).forEach((step) => {
-          worksheetData.push([`  Step ${step.stepNumber}:`]);
-          worksheetData.push([`    Action: ${step.action}`]);
-          worksheetData.push([`    Expected Result: ${step.expectedResult}`]);
-        });
-        worksheetData.push([]);
-        
-        worksheetData.push(['Overall Expected Results:', tc.expectedResults]);
-        worksheetData.push([]);
-        
-        if (tc.testData) {
-          worksheetData.push(['Test Data:']);
-          worksheetData.push(['  Inputs:', tc.testData.inputs]);
-          worksheetData.push(['  Expected Outputs:', tc.testData.outputs]);
-        }
-        worksheetData.push([]);
-        worksheetData.push(['='.repeat(50)]);
-        worksheetData.push([]);
-      });
-
-      const workbook = XLSX.utils.book_new();
-      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-      
-      const maxWidth = 100;
-      worksheet['!cols'] = [
-        { wch: 25 },
-        { wch: maxWidth }
-      ];
-      
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Test Cases');
-      
-      const fileName = `TestCases_Output_${new Date().toISOString().split('T')[0]}.xlsx`;
-      
-      XLSX.writeFile(workbook, fileName);
-      
-      toast({
-        title: "Download started",
-        description: `Test cases exported to ${fileName}`,
-      });
-      
-    } catch (error) {
-      console.error("Error exporting to Excel:", error);
-      toast({
-        title: "Export failed",
-        description: "Failed to export test cases to Excel.",
-        variant: "destructive",
-      });
-    }
+  // Export handlers using controller functions
+  const handleExportToPDF = () => {
+    exportToPDF(testCaseData, toast);
   };
 
-  // Export to Jira (placeholder function)
-  /*const exportToJira = () => {
-    toast({
-      title: "Jira Export",
-      description: "Jira export functionality coming soon!",
-    });
-  };*/
+  const handleExportToExcel = () => {
+    exportToExcel(testCaseData, toast);
+  };
+
+  const handleExportToXML = () => {
+    exportToXML(testCaseData, toast);
+  };
+
+  const handleExportToJira = async () => {
+    await exportToJira(testCaseData, toast);
+  };
 
   // Copy test case to clipboard
   const copyTestCase = (testCase: TestCaseDetail) => {
-    const text = `${testCase.id}: ${testCase.title}\n\nDescription: ${testCase.description}\n\nCategory: ${testCase.category}\nPriority: ${testCase.priority}\n\nTest Steps:\n${testCase.testSteps.map(step => `${step.stepNumber}. ${step.action}\n   Expected: ${step.expectedResult}`).join('\n')}\n\nOverall Expected Result: ${testCase.expectedResults}`;
-    
+    const text = `${testCase.id}: ${testCase.title}\n\nDescription: ${
+      testCase.description
+    }\n\nCategory: ${testCase.category}\nPriority: ${
+      testCase.priority
+    }\n\nTest Steps:\n${testCase.testSteps
+      .map(
+        (step) =>
+          `${step.stepNumber}. ${step.action}\n   Expected: ${step.expectedResult}`
+      )
+      .join("\n")}\n\nOverall Expected Result: ${testCase.expectedResults}`;
+
     navigator.clipboard.writeText(text);
     toast({
       title: "Copied to clipboard",
@@ -529,111 +258,86 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawFiles = e.target.files ? Array.from(e.target.files) : [];
     const files = rawFiles as File[];
-    const validTypes = ["application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-    
-    const validFiles = files.filter(file => validTypes.includes(file.type));
-    setAttachedFiles(prev => [...prev, ...validFiles.slice(0, 5 - prev.length)]);
+    const validTypes = [
+      "application/pdf",
+      "text/plain",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+
+    const validFiles = files.filter((file) => validTypes.includes(file.type));
+    setAttachedFiles((prev) => [
+      ...prev,
+      ...validFiles.slice(0, 5 - prev.length),
+    ]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
   const removeAttachment = (index: number) => {
-    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputValue.trim() && attachedFiles.length === 0) return;
 
     const userMessage = {
       id: Date.now(),
       type: "user",
       content: inputValue,
-      files: attachedFiles.map(f => ({ name: f.name, type: f.type, size: f.size })),
+      files: attachedFiles.map((f) => ({
+        name: f.name,
+        type: f.type,
+        size: f.size,
+      })),
       timestamp: new Date(),
     };
 
+    // add user message instantly to chat
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
     setAttachedFiles([]);
     setIsTyping(true);
 
-    setTimeout(() => {
+    try {
+      // Prepare context data to send with the message
+      const contextData = testCaseData
+        ? {
+            testCases: testCaseData.testCases,
+            summary: testCaseData.summary,
+            metadata: testCaseData.metadata,
+            totalTestCases: testCaseData.testCases?.length || 0,
+            requirements: testCaseData.metadata?.originalRequirements || "",
+          }
+        : null;
+
+      const res = await axios.post(
+        `${import.meta.env.VITE_REQUEST_URL}/chat/ai`,
+        {
+          message: userMessage,
+          context: contextData,
+        }
+      );
+
       const aiMessage = {
         id: Date.now() + 1,
         type: "ai",
-        content: generateAdvancedResponse(userMessage),
+        content: res.data.response,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, aiMessage]);
-      setIsTyping(false);
-    }, 1500 + Math.random() * 1000);
-  };
 
-  const generateAdvancedResponse = (userMessage: any) => {
-    if (userMessage.files && userMessage.files.length > 0) {
-      const fileNames = userMessage.files.map((f: any) => f.name).join(", ");
-      return {
-        text: `I've analyzed your ${userMessage.files.length} document${userMessage.files.length > 1 ? 's' : ''}: **${fileNames}**`,
-        sections: [
-          {
-            type: "analysis",
-            title: "Document Analysis",
-            items: [
-              { label: "Requirements Extracted", value: "47", status: "success" },
-              { label: "Test Cases Generated", value: "132", status: "success" },
-              { label: "Compliance Gaps", value: "3", status: "warning" },
-              { label: "Processing Time", value: "2.3s", status: "info" },
-            ]
-          },
-          {
-            type: "insights",
-            title: "Key Findings",
-            content: [
-              "✓ All HIPAA security requirements mapped to test cases",
-              "✓ FDA 21 CFR Part 11 compliance validated",
-              "⚠ 3 requirements need additional documentation",
-              "✓ Traceability matrix generated successfully"
-            ]
-          },
-          {
-            type: "actions",
-            title: "Available Actions",
-            buttons: [
-              { label: "Download Test Cases", icon: "download" },
-              { label: "View Traceability Matrix", icon: "check" },
-              { label: "Export Compliance Report", icon: "shield" },
-            ]
-          }
-        ]
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch (err) {
+      const errorMessage = {
+        id: Date.now() + 1,
+        type: "ai",
+        content: "Something went wrong. Please try again later.",
+        timestamp: new Date(),
       };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
     }
-    
-    return {
-      text: `I can help you with comprehensive healthcare software testing and compliance validation. Here's what I can do:`,
-      sections: [
-        {
-          type: "capabilities",
-          items: [
-            {
-              icon: "zap",
-              title: "Intelligent Test Generation",
-              desc: "Convert requirements into comprehensive test cases with full traceability"
-            },
-            {
-              icon: "shield",
-              title: "Compliance Validation",
-              desc: "Ensure HIPAA, FDA 21 CFR Part 11, and GDPR compliance"
-            },
-            {
-              icon: "check",
-              title: "Automated Documentation",
-              desc: "Generate audit-ready traceability matrices and reports"
-            }
-          ]
-        }
-      ]
-    };
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -644,51 +348,87 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
   };
 
   const copyMessage = (content: any) => {
-    const textContent = typeof content === 'string' ? content : content.text;
+    const textContent = typeof content === "string" ? content : content.text;
     navigator.clipboard.writeText(textContent);
   };
 
   const renderAIMessage = (message: any) => {
     const content = message.content;
-    
-    if (typeof content === 'string') {
-      return <div className="text-[15px] leading-relaxed whitespace-pre-wrap">{content}</div>;
+
+    if (typeof content === "string") {
+      // Convert markdown-style **bold** to HTML
+      const htmlContent = content.replace(
+        /\*\*(.*?)\*\*/g,
+        '<strong class="font-semibold text-gray-900">$1</strong>'
+      );
+
+      return (
+        <div
+          className="text-[15px] leading-relaxed whitespace-pre-wrap"
+          dangerouslySetInnerHTML={{ __html: htmlContent }}
+        />
+      );
     }
 
     return (
       <div className="space-y-4">
-        <div className="text-[15px] leading-relaxed" dangerouslySetInnerHTML={{ __html: content.text.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>') }} />
-        
+        <div
+          className="text-[15px] leading-relaxed"
+          dangerouslySetInnerHTML={{
+            __html: content.text.replace(
+              /\*\*(.*?)\*\*/g,
+              '<strong class="font-semibold text-gray-900">$1</strong>'
+            ),
+          }}
+        />
+
         {content.sections?.map((section: any, idx: number) => (
           <div key={idx} className="space-y-3">
             {section.title && (
-              <h4 className="text-sm font-semibold text-gray-900">{section.title}</h4>
+              <h4 className="text-sm font-semibold text-gray-900">
+                {section.title}
+              </h4>
             )}
-            
+
             {section.type === "analysis" && (
               <div className="grid grid-cols-2 gap-2">
                 {section.items.map((item: any, i: number) => (
-                  <div key={i} className="bg-white border border-gray-200 rounded-lg p-3">
+                  <div
+                    key={i}
+                    className="bg-white border border-gray-200 rounded-lg p-3"
+                  >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-600">{item.label}</span>
-                      {item.status === "success" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
-                      {item.status === "warning" && <AlertCircle className="h-3.5 w-3.5 text-amber-600" />}
-                      {item.status === "info" && <Clock className="h-3.5 w-3.5 text-blue-600" />}
+                      <span className="text-xs text-gray-600">
+                        {item.label}
+                      </span>
+                      {item.status === "success" && (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      )}
+                      {item.status === "warning" && (
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+                      )}
+                      {item.status === "info" && (
+                        <Clock className="h-3.5 w-3.5 text-blue-600" />
+                      )}
                     </div>
-                    <div className="text-lg font-bold text-gray-900">{item.value}</div>
+                    <div className="text-lg font-bold text-gray-900">
+                      {item.value}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
-            
+
             {section.type === "insights" && (
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 space-y-2">
                 {section.content.map((item: string, i: number) => (
-                  <div key={i} className="text-sm text-gray-700">{item}</div>
+                  <div key={i} className="text-sm text-gray-700">
+                    {item}
+                  </div>
                 ))}
               </div>
             )}
-            
+
             {section.type === "actions" && (
               <div className="flex flex-wrap gap-2">
                 {section.buttons.map((btn: any, i: number) => (
@@ -696,7 +436,9 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                     key={i}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all text-sm font-medium text-gray-700 shadow-sm"
                   >
-                    {btn.icon === "download" && <Download className="h-4 w-4" />}
+                    {btn.icon === "download" && (
+                      <Download className="h-4 w-4" />
+                    )}
                     {btn.icon === "check" && <FileCheck className="h-4 w-4" />}
                     {btn.icon === "shield" && <Shield className="h-4 w-4" />}
                     {btn.label}
@@ -704,18 +446,29 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                 ))}
               </div>
             )}
-            
+
             {section.type === "capabilities" && (
               <div className="space-y-3">
                 {section.items.map((item: any, i: number) => (
-                  <div key={i} className="flex gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:border-emerald-300 hover:shadow-sm transition-all">
+                  <div
+                    key={i}
+                    className="flex gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:border-emerald-300 hover:shadow-sm transition-all"
+                  >
                     <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
-                      {item.icon === "zap" && <Zap className="h-5 w-5 text-white" />}
-                      {item.icon === "shield" && <Shield className="h-5 w-5 text-white" />}
-                      {item.icon === "check" && <FileCheck className="h-5 w-5 text-white" />}
+                      {item.icon === "zap" && (
+                        <Zap className="h-5 w-5 text-white" />
+                      )}
+                      {item.icon === "shield" && (
+                        <Shield className="h-5 w-5 text-white" />
+                      )}
+                      {item.icon === "check" && (
+                        <FileCheck className="h-5 w-5 text-white" />
+                      )}
                     </div>
                     <div>
-                      <div className="font-semibold text-gray-900 text-sm mb-1">{item.title}</div>
+                      <div className="font-semibold text-gray-900 text-sm mb-1">
+                        {item.title}
+                      </div>
                       <div className="text-sm text-gray-600">{item.desc}</div>
                     </div>
                   </div>
@@ -728,10 +481,7 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
     );
   };
 
-  const suggestedPrompts = [
-    { text: "Generate test cases from requirements", icon: FileCheck },
-    { text: "Validate HIPAA compliance", icon: Shield },
-  ];
+  const suggestedPrompts = [];
 
   const testCases = testCaseData?.testCases || [];
   useEffect(() => {
@@ -750,8 +500,12 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <div className="flex-1">
-                <h3 className="text-xl font-bold text-gray-900">{testCases[selectedTestCase]?.id}</h3>
-                <p className="text-sm text-gray-600 mt-1">{testCases[selectedTestCase]?.title}</p>
+                <h3 className="text-xl font-bold text-gray-900">
+                  {testCases[selectedTestCase]?.id}
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {testCases[selectedTestCase]?.title}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -791,11 +545,17 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
 
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <h4 className="font-semibold mb-2 text-xs text-gray-600">Category</h4>
-                      <Badge variant="outline">{testCases[selectedTestCase]?.category}</Badge>
+                      <h4 className="font-semibold mb-2 text-xs text-gray-600">
+                        Category
+                      </h4>
+                      <Badge variant="outline">
+                        {testCases[selectedTestCase]?.category}
+                      </Badge>
                     </div>
                     <div>
-                      <h4 className="font-semibold mb-2 text-xs text-gray-600">Priority</h4>
+                      <h4 className="font-semibold mb-2 text-xs text-gray-600">
+                        Priority
+                      </h4>
                       <Badge
                         variant={
                           testCases[selectedTestCase]?.priority === "High"
@@ -809,17 +569,25 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                       </Badge>
                     </div>
                     <div>
-                      <h4 className="font-semibold mb-2 text-xs text-gray-600">Risk Level</h4>
-                      <Badge variant="outline">{testCases[selectedTestCase]?.riskLevel}</Badge>
+                      <h4 className="font-semibold mb-2 text-xs text-gray-600">
+                        Risk Level
+                      </h4>
+                      <Badge variant="outline">
+                        {testCases[selectedTestCase]?.riskLevel}
+                      </Badge>
                     </div>
                   </div>
 
                   <div>
-                    <h4 className="font-semibold mb-2 text-sm">Preconditions</h4>
+                    <h4 className="font-semibold mb-2 text-sm">
+                      Preconditions
+                    </h4>
                     <ul className="text-sm space-y-1 list-disc list-inside text-gray-700 bg-gray-50 p-3 rounded-lg">
-                      {testCases[selectedTestCase]?.preconditions?.map((pre, i) => (
-                        <li key={i}>{pre}</li>
-                      ))}
+                      {testCases[selectedTestCase]?.preconditions?.map(
+                        (pre, i) => (
+                          <li key={i}>{pre}</li>
+                        )
+                      )}
                     </ul>
                   </div>
 
@@ -833,7 +601,9 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                               {step.stepNumber}
                             </span>
                             <div className="flex-1">
-                              <div className="text-gray-700 font-medium">{step.action}</div>
+                              <div className="text-gray-700 font-medium">
+                                {step.action}
+                              </div>
                               <div className="text-xs text-emerald-600 mt-1 bg-emerald-50 p-2 rounded">
                                 Expected: {step.expectedResult}
                               </div>
@@ -845,7 +615,9 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                   </div>
 
                   <div>
-                    <h4 className="font-semibold mb-2 text-sm">Overall Expected Results</h4>
+                    <h4 className="font-semibold mb-2 text-sm">
+                      Overall Expected Results
+                    </h4>
                     <p className="text-sm text-gray-700 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
                       {testCases[selectedTestCase]?.expectedResults}
                     </p>
@@ -853,43 +625,67 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <h4 className="font-semibold mb-2 text-xs text-gray-600">Estimated Duration</h4>
-                      <p className="text-sm text-gray-700">{testCases[selectedTestCase]?.estimatedDuration}</p>
+                      <h4 className="font-semibold mb-2 text-xs text-gray-600">
+                        Estimated Duration
+                      </h4>
+                      <p className="text-sm text-gray-700">
+                        {testCases[selectedTestCase]?.estimatedDuration}
+                      </p>
                     </div>
                     <div>
-                      <h4 className="font-semibold mb-2 text-xs text-gray-600">Automation Potential</h4>
-                      <p className="text-sm text-gray-700">{testCases[selectedTestCase]?.automationPotential}</p>
+                      <h4 className="font-semibold mb-2 text-xs text-gray-600">
+                        Automation Potential
+                      </h4>
+                      <p className="text-sm text-gray-700">
+                        {testCases[selectedTestCase]?.automationPotential}
+                      </p>
                     </div>
                   </div>
                 </TabsContent>
 
                 <TabsContent value="trace" className="space-y-4 mt-4">
                   <div>
-                    <h4 className="font-semibold mb-2 text-sm">Requirement Traceability</h4>
+                    <h4 className="font-semibold mb-2 text-sm">
+                      Requirement Traceability
+                    </h4>
                     <div className="space-y-2">
                       <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">Requirement ID</p>
-                        <p className="text-sm font-medium text-gray-900">{testCases[selectedTestCase]?.requirementId}</p>
+                        <p className="text-xs text-gray-600 mb-1">
+                          Requirement ID
+                        </p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {testCases[selectedTestCase]?.requirementId}
+                        </p>
                       </div>
                       <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">Traceability Link</p>
-                        <p className="text-sm font-medium text-gray-900">{testCases[selectedTestCase]?.traceabilityLink}</p>
+                        <p className="text-xs text-gray-600 mb-1">
+                          Traceability Link
+                        </p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {testCases[selectedTestCase]?.traceabilityLink}
+                        </p>
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    <h4 className="font-semibold mb-2 text-sm">Compliance Standards</h4>
+                    <h4 className="font-semibold mb-2 text-sm">
+                      Compliance Standards
+                    </h4>
                     <div className="space-y-2">
-                      {testCases[selectedTestCase]?.complianceStandards?.map((comp) => (
-                        <div
-                          key={comp}
-                          className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200"
-                        >
-                          <span className="text-sm font-medium text-gray-900">{comp}</span>
-                          <CheckCircle className="h-4 w-4 text-emerald-600" />
-                        </div>
-                      ))}
+                      {testCases[selectedTestCase]?.complianceStandards?.map(
+                        (comp) => (
+                          <div
+                            key={comp}
+                            className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200"
+                          >
+                            <span className="text-sm font-medium text-gray-900">
+                              {comp}
+                            </span>
+                            <CheckCircle className="h-4 w-4 text-emerald-600" />
+                          </div>
+                        )
+                      )}
                     </div>
                   </div>
 
@@ -898,15 +694,21 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                     {testCases[selectedTestCase]?.testData && (
                       <div className="space-y-3">
                         <div className="p-3 bg-gray-50 rounded-lg">
-                          <label className="text-xs font-medium text-gray-600 block mb-1">Inputs:</label>
+                          <label className="text-xs font-medium text-gray-600 block mb-1">
+                            Inputs:
+                          </label>
                           <p className="text-sm text-gray-900">
-                            {testCases[selectedTestCase]?.testData.inputs || 'N/A'}
+                            {testCases[selectedTestCase]?.testData.inputs ||
+                              "N/A"}
                           </p>
                         </div>
                         <div className="p-3 bg-gray-50 rounded-lg">
-                          <label className="text-xs font-medium text-gray-600 block mb-1">Expected Outputs:</label>
+                          <label className="text-xs font-medium text-gray-600 block mb-1">
+                            Expected Outputs:
+                          </label>
                           <p className="text-sm text-gray-900">
-                            {testCases[selectedTestCase]?.testData.outputs || 'N/A'}
+                            {testCases[selectedTestCase]?.testData.outputs ||
+                              "N/A"}
                           </p>
                         </div>
                       </div>
@@ -920,33 +722,56 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
       )}
 
       {/* Left Side - Test Cases List */}
-      <div className="w-[32rem] border-r border-gray-200 flex flex-col bg-white/50 backdrop-blur-sm overflow-hidden">
+      <div className="w-[32rem] mt-5 pt-5 border-r border-gray-200 flex flex-col bg-white/50 backdrop-blur-sm overflow-hidden">
         {/* Header */}
-        <div className="flex-shrink-0 border-b border-gray-200 bg-white/80 backdrop-blur-xl shadow-sm px-4 py-4">
+        <div className="flex-shrink-0 mt-5 border-b border-gray-200 bg-white/80 backdrop-blur-xl shadow-sm px-4 py-5">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Test Cases</h2>
             <p className="text-xs text-gray-600">AI-generated & compliant</p>
           </div>
           {testCaseData && (
-            <div className="flex gap-2 mt-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exportToExcel}
-                className="flex-1 text-xs"
-              >
-                <Download className="h-3 w-3 mr-1" />
-                Excel
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exportToJira}
-                className="flex-1 text-xs"
-              >
-                <Upload className="h-3 w-3 mr-1" />
-                Jira
-              </Button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportToExcel}
+                  className="flex-1 text-xs"
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  Excel
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportToJira}
+                  className="flex-1 text-xs"
+                >
+                  <Upload className="h-3 w-3 mr-1" />
+                  Jira
+                </Button>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportToPDF}
+                  className="flex-1 text-xs"
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportToXML}
+                  className="flex-1 text-xs"
+                >
+                  <Upload className="h-3 w-3 mr-1" />
+                  XML
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -965,8 +790,12 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
               <div className="flex items-center justify-center min-h-[400px]">
                 <div className="text-center space-y-4">
                   <FileText className="h-12 w-12 text-gray-400 mx-auto" />
-                  <h3 className="text-lg font-semibold text-gray-900">No Test Cases</h3>
-                  <p className="text-sm text-gray-600">Generate test cases to see them here</p>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    No Test Cases
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Generate test cases to see them here
+                  </p>
                 </div>
               </div>
             ) : (
@@ -976,7 +805,9 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                   <Card className="glass-card">
                     <CardContent className="pt-4 pb-3">
                       <div className="text-center">
-                        <p className="text-2xl font-bold text-gray-900">{testCases.length}</p>
+                        <p className="text-2xl font-bold text-gray-900">
+                          {testCases.length}
+                        </p>
                         <p className="text-xs text-gray-600">Test Cases</p>
                       </div>
                     </CardContent>
@@ -986,7 +817,8 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                     <CardContent className="pt-4 pb-3">
                       <div className="text-center">
                         <p className="text-2xl font-bold text-gray-900">
-                          {testCaseData.summary.complianceStandardsCovered?.length || 0}
+                          {testCaseData.summary.complianceStandardsCovered
+                            ?.length || 0}
                         </p>
                         <p className="text-xs text-gray-600">Standards</p>
                       </div>
@@ -1004,14 +836,17 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                     >
                       <div className="space-y-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <Badge variant="outline" className="text-xs px-1.5 py-0">
+                          <Badge
+                            variant="outline"
+                            className="text-xs px-1.5 py-0"
+                          >
                             {testCase.id}
                           </Badge>
                           <Badge
                             variant={
                               testCase.priority === "High"
                                 ? "destructive"
-                                : testCase.priority === "Medium" 
+                                : testCase.priority === "Medium"
                                 ? "default"
                                 : "secondary"
                             }
@@ -1047,7 +882,9 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
               </div>
               <div>
                 <CardTitle className="text-lg">MedTest AI Assistant</CardTitle>
-                <CardDescription className="text-xs">Healthcare testing & compliance expert</CardDescription>
+                <CardDescription className="text-xs">
+                  Healthcare testing & compliance expert
+                </CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -1063,13 +900,14 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                     </div>
                     <div className="absolute -inset-4 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 rounded-full blur-2xl -z-10"></div>
                   </div>
-                  
+
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900 mb-2">
                       Welcome to MedTest AI
                     </h2>
                     <p className="text-sm text-gray-600">
-                      Your intelligent assistant for healthcare software testing and compliance validation.
+                      Your intelligent assistant for healthcare software testing
+                      and compliance validation.
                     </p>
                   </div>
 
@@ -1111,7 +949,11 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                       </div>
                     )}
 
-                    <div className={`max-w-[75%] ${message.type === "user" ? "flex flex-col items-end" : ""}`}>
+                    <div
+                      className={`max-w-[75%] ${
+                        message.type === "user" ? "flex flex-col items-end" : ""
+                      }`}
+                    >
                       <div
                         className={`rounded-2xl px-4 py-3 ${
                           message.type === "user"
@@ -1122,7 +964,10 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                         {message.files && message.files.length > 0 && (
                           <div className="space-y-2 mb-3 pb-3 border-b border-emerald-500/30">
                             {message.files.map((file: any, idx: number) => (
-                              <div key={idx} className="flex items-center gap-2 bg-emerald-500/20 rounded-lg px-3 py-2">
+                              <div
+                                key={idx}
+                                className="flex items-center gap-2 bg-emerald-500/20 rounded-lg px-3 py-2"
+                              >
                                 <FileText className="h-4 w-4" />
                                 <span className="text-sm font-medium flex-1 truncate">
                                   {file.name}
@@ -1134,7 +979,7 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                             ))}
                           </div>
                         )}
-                        
+
                         {message.type === "ai" ? (
                           renderAIMessage(message)
                         ) : (
@@ -1143,7 +988,7 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                           </div>
                         )}
                       </div>
-                      
+
                       <div className="flex items-center gap-3 mt-1.5 px-2">
                         <div className="text-xs text-gray-500">
                           {message.timestamp.toLocaleTimeString([], {
@@ -1151,7 +996,7 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                             minute: "2-digit",
                           })}
                         </div>
-                        
+
                         {hoveredMessage === message.id && (
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
@@ -1189,9 +1034,18 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
                     </div>
                     <div className="bg-white rounded-2xl px-4 py-3 shadow-md border border-gray-100">
                       <div className="flex gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce" style={{ animationDelay: "0ms" }}></div>
-                        <div className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce" style={{ animationDelay: "150ms" }}></div>
-                        <div className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce" style={{ animationDelay: "300ms" }}></div>
+                        <div
+                          className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce"
+                          style={{ animationDelay: "0ms" }}
+                        ></div>
+                        <div
+                          className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce"
+                          style={{ animationDelay: "150ms" }}
+                        ></div>
+                        <div
+                          className="w-2 h-2 rounded-full bg-emerald-600 animate-bounce"
+                          style={{ animationDelay: "300ms" }}
+                        ></div>
                       </div>
                     </div>
                   </div>
@@ -1207,11 +1061,18 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
             {attachedFiles.length > 0 && (
               <div className="mb-3 space-y-2">
                 {attachedFiles.map((file, idx) => (
-                  <div key={idx} className="flex items-center gap-3 p-2 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200">
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 p-2 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200"
+                  >
                     <FileText className="h-4 w-4 text-emerald-600" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-gray-900 truncate">{file.name}</div>
-                      <div className="text-xs text-gray-600">{(file.size / 1024).toFixed(1)} KB</div>
+                      <div className="text-xs font-medium text-gray-900 truncate">
+                        {file.name}
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        {(file.size / 1024).toFixed(1)} KB
+                      </div>
                     </div>
                     <Button
                       size="sm"
@@ -1268,7 +1129,8 @@ const formatTestCaseForJira = (testCase: TestCaseDetail): string => {
             </div>
 
             <p className="text-xs text-gray-500 text-center mt-3">
-              MedTest AI can make mistakes. Always verify compliance-critical information.
+              MedTest AI can make mistakes. Always verify compliance-critical
+              information.
             </p>
           </div>
         </Card>

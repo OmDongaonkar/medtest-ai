@@ -36,12 +36,8 @@ const Auth = () => {
     setIsLoading(true);
     
     try {
-      console.log("🚪 Starting logout process...");
-      
       // Step 1: Call backend logout endpoint
       try {
-        console.log("📤 Calling backend logout endpoint...");
-       // const response = await fetch("http://localhost:3000/auth/logout", {
         const response = await fetch(`${import.meta.env.VITE_REQUEST_URL}/auth/logout`, {
           method: "POST",
           headers: {
@@ -49,30 +45,18 @@ const Auth = () => {
           },
           credentials: "include",
         });
-
-        if (!response.ok) {
-          console.warn("⚠️ Backend logout failed:", response.status);
-          // Continue with client-side logout even if backend fails
-        } else {
-          console.log("✅ Backend logout successful");
-        }
       } catch (backendError) {
         console.warn("⚠️ Backend logout request failed:", backendError);
-        // Continue with client-side logout even if backend fails
       }
 
       // Step 2: Sign out from Firebase (if using Google auth)
       try {
-        console.log("🔥 Signing out from Firebase...");
         await signOut(auth);
-        console.log("✅ Firebase signout successful");
       } catch (firebaseError) {
         console.warn("⚠️ Firebase signout failed:", firebaseError);
-        // Continue with context logout even if Firebase fails
       }
 
       // Step 3: Clear local auth context
-      console.log("🧹 Clearing local auth context...");
       logout();
       
       // Step 4: Clear any local storage items (if any)
@@ -86,7 +70,6 @@ const Auth = () => {
         sessionStorage.removeItem('authToken');
         sessionStorage.removeItem('user');
         
-        console.log("✅ Local storage cleared");
       } catch (storageError) {
         console.warn("⚠️ Failed to clear storage:", storageError);
       }
@@ -139,17 +122,10 @@ const Auth = () => {
     setIsLoading(true);
     
     try {
-      console.log("🚀 Starting Google auth process...");
-      console.log("Active tab:", activeTab);
-      
-      // Dynamically import GoogleAuthProvider to avoid import issues
-      console.log("📦 Importing GoogleAuthProvider...");
       const { GoogleAuthProvider } = await import("firebase/auth");
-      console.log("✅ GoogleAuthProvider imported successfully");
-      
+
       // Create and configure provider
       const provider = new GoogleAuthProvider();
-      console.log("✅ Provider created");
       
       // Add scopes
       provider.addScope('email');
@@ -161,21 +137,9 @@ const Auth = () => {
         prompt: 'select_account'
       });
       
-      console.log("✅ Provider configured with scopes");
-      
       // Step 1: Firebase Authentication
-      console.log("📱 Attempting Firebase signInWithPopup...");
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      
-      console.log("✅ Firebase auth successful!");
-      console.log("User details:", {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        emailVerified: user.emailVerified,
-        providerData: user.providerData
-      });
 
       // Check for email in user object or providerData
       let emailToUse = user.email;
@@ -183,7 +147,6 @@ const Auth = () => {
       if (!emailToUse) {
         const googleProvider = user.providerData?.find(p => p.providerId === 'google.com');
         emailToUse = googleProvider?.email;
-        console.log("Email from providerData:", emailToUse);
       }
 
       if (!emailToUse) {
@@ -200,13 +163,9 @@ const Auth = () => {
         photoURL: user.photoURL || null,
       };
 
-      console.log("📤 Sending to backend:", requestBody);
-
       // Step 3: Send to backend
       const endpoint = activeTab === "login" 
-        //? `http://localhost:3000/auth/google-login`
         ? `${import.meta.env.VITE_REQUEST_URL}/auth/google-login`
-       // : "http://localhost:3000/auth/google-signup";
         : `${import.meta.env.VITE_REQUEST_URL}/auth/google-signup`;
 
       const response = await fetch(endpoint, {
@@ -218,15 +177,12 @@ const Auth = () => {
         body: JSON.stringify(requestBody),
       });
 
-      console.log("📥 Backend response status:", response.status);
-
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `Server error: ${response.status}`);
       }
 
       const responseData = await response.json();
-      console.log("✅ Backend response:", responseData);
 
       // Step 4: Update local auth state
       login(responseData.user);
@@ -239,8 +195,6 @@ const Auth = () => {
       navigate("/", { replace: true });
 
     } catch (error) {
-      console.error("💥 Google Auth Error:", error);
-      
       // Handle specific error types
       if (error?.code) {
         // Firebase auth errors
@@ -379,7 +333,6 @@ const Auth = () => {
         description: error.message || "Something went wrong. Please try again.",
         variant: "destructive",
       });
-      console.error("❌ Error:", error);
     } finally {
       setIsLoading(false);
     }

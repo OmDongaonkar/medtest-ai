@@ -134,13 +134,16 @@ router.get("/jira/callback", async (req, res) => {
     await axios.patch(updateUrl, jiraData);
 
     console.log("Jira data saved successfully for user:", userId);
-
-    res.json({
+	
+  /*  res.json({
       status: "success",
       message: "Jira connected successfully",
       user: userResponse.data,
       sites: resourcesResponse.data,
-    });
+    });*/
+	res.redirect(`${process.env.FRONTEND_URL}/upload`);
+
+	
   } catch (error) {
     console.error("Error during Jira OAuth:", error.response?.data || error.message);
     res.status(500).json({

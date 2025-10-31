@@ -1,3 +1,4 @@
+import axios from "axios";
 import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,16 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import * as mammoth from "mammoth";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+
 
 // Extend Window interface for PDF.js
 declare global {
@@ -106,13 +117,19 @@ const UploadPage = () => {
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [charCount, setCharCount] = useState(0);
+  
+  //NEW: Modal state for Jira requirement input
+  const [showJiraModal, setShowJiraModal] = useState(false);
+  const [jiraRequirement, setJiraRequirement] = useState("");
+  const [jiraSummary, setJiraSummary] = useState("");
+  const [isSubmittingToJira, setIsSubmittingToJira] = useState(false);
+  
   const { toast } = useToast();
   const navigate = useNavigate();
-  
-  // ✅ MOVED INSIDE THE COMPONENT - This fixes the hook call error
   const { isLoggedIn, user } = useAuth();
 
   const MAX_CHARS = 3000;
+  const JIRA_MAX_CHARS = 1000; // Jira description limit
 
   // Redirect to /auth if not logged in
   useEffect(() => {
@@ -131,19 +148,19 @@ const UploadPage = () => {
 async function getUserJiraData(userId) {
   try {
     const url = `${process.env.DATABASE_URL}/users/${userId}/jira.json`;
-    console.log("🔍 Fetching Jira data from:", url);
+    console.log("Fetching Jira data from:", url);
     
     const response = await axios.get(url);
-    console.log("📦 Raw Jira data response:", response.data);
+    console.log("Raw Jira data response:", response.data);
     
     if (!response.data) {
-      console.warn("⚠️ No Jira data found for user:", userId);
+      console.warn("No Jira data found for user:", userId);
       return null;
     }
     
     return response.data;
   } catch (error) {
-    console.error("❌ Error fetching user Jira data:", error.message);
+    console.error("Error fetching user Jira data:", error.message);
     if (error.response?.status === 404) {
       return null; // User hasn't connected Jira yet
     }
@@ -152,65 +169,44 @@ async function getUserJiraData(userId) {
 }
 	// Update these functions in your UploadPage.tsx
 const CallJiraAdd = async () => {
-  try {
-    console.log("🚀 Starting CallJiraAdd...");
-    
-    // First check if Jira is connected
-    const statusResponse = await fetch(
-      `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/status`,
-      {
-        method: "GET",
-        credentials: "include",
-      }
-    );
-    
-    console.log("📊 Status response status:", statusResponse.status);
-    const statusData = await statusResponse.json();
-    console.log("📊 Status data:", statusData);
-    
-    if (!statusData.connected) {
+    setShowJiraModal(true);
+    // Pre-fill with current requirements if available
+    if (requirements.trim()) {
+      setJiraSummary("Requirements from MedTest AI");
+      setJiraRequirement(requirements.substring(0, JIRA_MAX_CHARS));
+    }
+  };
+  //NEW: Handle Jira submission from modal
+  const handleJiraSubmit = async () => {
+    if (!jiraSummary.trim() || !jiraRequirement.trim()) {
       toast({
-        title: "Jira not connected",
-        description: "Redirecting to Jira authentication...",
+        title: "Missing information",
+        description: "Please provide both summary and requirement description.",
+        variant: "destructive",
       });
+      return;
+    }
+
+    setIsSubmittingToJira(true);
+
+    try {
+      console.log("Starting Jira submission...");
       
-      // Redirect to Jira OAuth
-      const authResponse = await fetch(
-        `${import.meta.env.VITE_REQUEST_URL}/integrations/jira`,
+      // Check if Jira is connected
+      const statusResponse = await fetch(
+        `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/status`,
         {
           method: "GET",
           credentials: "include",
         }
       );
-      const authData = await authResponse.json();
-      console.log("🔐 Auth URL:", authData.url);
-      window.location.href = authData.url;
-      return;
-    }
-
-    console.log("✅ Jira is connected, fetching projects...");
-
-    // Get projects first
-    const projectsResponse = await fetch(
-      `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/projects`,
-      {
-        method: "GET",
-        credentials: "include",
-      }
-    );
-    
-    console.log("📋 Projects response status:", projectsResponse.status);
-    
-    if (!projectsResponse.ok) {
-      const errorData = await projectsResponse.json();
-      console.error("❌ Projects fetch error:", errorData);
       
-      // If token expired or invalid, reconnect
-      if (projectsResponse.status === 401 || errorData.error?.includes("token")) {
+      const statusData = await statusResponse.json();
+      
+      if (!statusData.connected) {
         toast({
-          title: "Session expired",
-          description: "Please reconnect to Jira",
-          variant: "destructive",
+          title: "Jira not connected",
+          description: "Redirecting to Jira authentication...",
         });
         
         const authResponse = await fetch(
@@ -224,232 +220,273 @@ const CallJiraAdd = async () => {
         window.location.href = authData.url;
         return;
       }
-      
-      throw new Error(errorData.message || errorData.error || "Failed to fetch projects");
-    }
-    
-    const projectsData = await projectsResponse.json();
-    console.log("📋 Projects data:", projectsData);
-    
-    if (!projectsData.projects || projectsData.projects.length === 0) {
-      toast({
-        title: "No projects found",
-        description: "Please create a project in Jira first. Visit your Jira site to create one.",
-        variant: "destructive",
-      });
-      
-      // Open Jira site in new tab
-      if (statusData.sites && statusData.sites.length > 0) {
-        window.open(statusData.sites[0].url, "_blank");
-      }
-      return;
-    }
 
-    console.log("✅ Found projects:", projectsData.projects.length);
-
-    // Use the first project or let user select
-    const firstProject = projectsData.projects[0];
-    console.log("📦 Using project:", firstProject.key);
-    
-    // Create issue with requirements
-    const issueResponse = await fetch(
-      `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/issue`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          projectKey: firstProject.key,
-          summary: "Requirements from MedTest AI",
-          description: requirements.substring(0, 1000), // Jira has character limits
-          issueType: "Task",
-        }),
-      }
-    );
-
-    if (!issueResponse.ok) {
-      const errorData = await issueResponse.json();
-      console.error("❌ Issue creation error:", errorData);
-      throw new Error(errorData.error || "Failed to create issue");
-    }
-
-    const issueData = await issueResponse.json();
-    console.log("✅ Issue created:", issueData);
-    
-    toast({
-      title: "Success!",
-      description: `Issue created in project ${firstProject.key}: ${issueData.issue.key}`,
-    });
-    
-    // Optional: Open the issue in Jira
-    const jiraUrl = `${statusData.sites[0].url}/browse/${issueData.issue.key}`;
-    window.open(jiraUrl, "_blank");
-    
-  } catch (err: any) {
-    console.error("❌ Failed to add to Jira:", err);
-    toast({
-      title: "Error",
-      description: err.message || "Failed to add requirements to Jira. Please try again.",
-      variant: "destructive",
-    });
-  }
-};
-
-const CallJiraFetch = async () => {
-  try {
-    console.log("🚀 Starting CallJiraFetch...");
-    
-    const statusResponse = await fetch(
-      `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/status`,
-      {
-        method: "GET",
-        credentials: "include",
-      }
-    );
-    
-    const statusData = await statusResponse.json();
-    
-    if (!statusData.connected) {
-      toast({
-        title: "Jira not connected",
-        description: "Redirecting to Jira authentication...",
-      });
-      
-      const authResponse = await fetch(
-        `${import.meta.env.VITE_REQUEST_URL}/integrations/jira`,
+      // Get projects
+      const projectsResponse = await fetch(
+        `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/projects`,
         {
           method: "GET",
           credentials: "include",
         }
       );
-      const authData = await authResponse.json();
-      window.location.href = authData.url;
-      return;
-    }
-
-    console.log("✅ Jira is connected, fetching projects...");
-
-    const projectsResponse = await fetch(
-      `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/projects`,
-      {
-        method: "GET",
-        credentials: "include",
+      
+      if (!projectsResponse.ok) {
+        const errorData = await projectsResponse.json();
+        throw new Error(errorData.message || "Failed to fetch projects");
       }
-    );
-    
-    if (!projectsResponse.ok) {
-      const errorData = await projectsResponse.json();
-      throw new Error(errorData.message || "Failed to fetch projects");
-    }
-    
-    const projectsData = await projectsResponse.json();
-    
-    if (!projectsData.projects || projectsData.projects.length === 0) {
+      
+      const projectsData = await projectsResponse.json();
+      
+      if (!projectsData.projects || projectsData.projects.length === 0) {
+        toast({
+          title: "No projects found",
+          description: "Please create a project in Jira first.",
+          variant: "destructive",
+        });
+        if (statusData.sites && statusData.sites.length > 0) {
+          window.open(statusData.sites[0].url, "_blank");
+        }
+        return;
+      }
+
+      const firstProject = projectsData.projects[0];
+      
+      // Create issue with user-provided content
+      const issueResponse = await fetch(
+        `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/issue`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            projectKey: firstProject.key,
+            summary: jiraSummary.trim(),
+            description: jiraRequirement.trim(),
+            issueType: "Task",
+          }),
+        }
+      );
+
+      if (!issueResponse.ok) {
+        const errorData = await issueResponse.json();
+        throw new Error(errorData.error || "Failed to create issue");
+      }
+
+      const issueData = await issueResponse.json();
+      
       toast({
-        title: "No projects found",
-        description: "Please create a project in Jira first.",
+        title: "Success!",
+        description: `Issue created: ${issueData.issue.key}`,
+      });
+      
+      // Close modal and reset fields
+      setShowJiraModal(false);
+      setJiraSummary("");
+      setJiraRequirement("");
+      
+      // Optional: Open the issue in Jira
+      const jiraUrl = `${statusData.sites[0].url}/browse/${issueData.issue.key}`;
+      window.open(jiraUrl, "_blank");
+      
+    } catch (err: any) {
+      console.error("Failed to add to Jira:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to add requirements to Jira.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setIsSubmittingToJira(false);
     }
+  };
 
-    const firstProject = projectsData.projects[0];
-    console.log("📦 Fetching issues from project:", firstProject.key);
-    
-    const issuesResponse = await fetch(
-      `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/issues?projectKey=${firstProject.key}&maxResults=50`,
-      {
-        method: "GET",
-        credentials: "include",
-      }
-    );
-
-    if (!issuesResponse.ok) {
-      const errorData = await issuesResponse.json();
-      console.error("❌ Issues fetch error:", errorData);
-      throw new Error(errorData.error || "Failed to fetch issues");
-    }
-
-    const issuesData = await issuesResponse.json();
-    console.log("📋 Issues data:", issuesData);
-    
-    if (issuesData.total === 0) {
-      toast({
-        title: "No issues found",
-        description: `No issues found in project ${firstProject.key}. Create some issues first.`,
-      });
-      return;
-    }
-
-    // ✅ IMPROVED: Better parsing of Jira description format (ADF - Atlassian Document Format)
-    const parseJiraDescription = (description: any): string => {
-      if (!description) return "";
+  //MODIFIED: Filter out test cases when fetching from Jira
+  const CallJiraFetch = async () => {
+    try {
+      console.log("Starting CallJiraFetch...");
       
-      // Handle Atlassian Document Format (ADF)
-      if (description.content && Array.isArray(description.content)) {
-        return description.content
-          .map((node: any) => {
-            if (node.type === "paragraph" && node.content) {
-              return node.content
-                .map((item: any) => item.text || "")
-                .join("");
-            }
-            return "";
-          })
-          .filter((text: string) => text.trim())
-          .join("\n");
-      }
+      const statusResponse = await fetch(
+        `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/status`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
       
-      // Handle plain text
-      if (typeof description === "string") {
-        return description;
+      const statusData = await statusResponse.json();
+      
+      if (!statusData.connected) {
+        toast({
+          title: "Jira not connected",
+          description: "Redirecting to Jira authentication...",
+        });
+        
+        const authResponse = await fetch(
+          `${import.meta.env.VITE_REQUEST_URL}/integrations/jira`,
+          {
+            method: "GET",
+            credentials: "include",
+          }
+        );
+        const authData = await authResponse.json();
+        window.location.href = authData.url;
+        return;
+      }
+
+      const projectsResponse = await fetch(
+        `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/projects`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+      
+      if (!projectsResponse.ok) {
+        const errorData = await projectsResponse.json();
+        throw new Error(errorData.message || "Failed to fetch projects");
       }
       
-      return "";
-    };
+      const projectsData = await projectsResponse.json();
+      
+      if (!projectsData.projects || projectsData.projects.length === 0) {
+        toast({
+          title: "No projects found",
+          description: "Please create a project in Jira first.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    // Combine all issue summaries and descriptions
-    const combinedRequirements = issuesData.issues
-      .map((issue: any) => {
+      const firstProject = projectsData.projects[0];
+      
+      const issuesResponse = await fetch(
+        `${import.meta.env.VITE_REQUEST_URL}/integrations/jira/issues?projectKey=${firstProject.key}&maxResults=50`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+
+      if (!issuesResponse.ok) {
+        const errorData = await issuesResponse.json();
+        throw new Error(errorData.error || "Failed to fetch issues");
+      }
+
+      const issuesData = await issuesResponse.json();
+      
+      if (issuesData.total === 0) {
+        toast({
+          title: "No issues found",
+          description: `No issues found in project ${firstProject.key}.`,
+        });
+        return;
+      }
+
+      // IMPROVED: Filter out test cases and parse only requirements
+      const parseJiraDescription = (description: any): string => {
+        if (!description) return "";
+        
+        if (description.content && Array.isArray(description.content)) {
+          return description.content
+            .map((node: any) => {
+              if (node.type === "paragraph" && node.content) {
+                return node.content
+                  .map((item: any) => item.text || "")
+                  .join("");
+              }
+              return "";
+            })
+            .filter((text: string) => text.trim())
+            .join("\n");
+        }
+        
+        if (typeof description === "string") {
+          return description;
+        }
+        
+        return "";
+      };
+
+      //NEW: Function to check if content is a test case
+      const isTestCase = (summary: string, description: string): boolean => {
+        const content = `${summary} ${description}`.toLowerCase();
+        
+        // Keywords that indicate test cases
+        const testCaseKeywords = [
+          'test case',
+          'test scenario',
+          'expected result',
+          'actual result',
+          'test steps',
+          'precondition',
+          'postcondition',
+          'test data',
+          'pass/fail',
+          'test id',
+          'test description'
+        ];
+        
+        // Check if content contains test case keywords
+        const hasTestKeywords = testCaseKeywords.some(keyword => 
+          content.includes(keyword)
+        );
+        
+        // Check if it has structured test case format (steps, expected results, etc.)
+        const hasTestStructure = /step\s*\d+|expected\s*result|actual\s*result/i.test(content);
+        
+        return hasTestKeywords || hasTestStructure;
+      };
+
+      // Filter and combine only requirements (not test cases)
+      const combinedRequirements = issuesData.issues
+        .map((issue: any) => {
+          const summary = issue.fields.summary || "";
+          const description = parseJiraDescription(issue.fields.description);
+          
+          // Skip if it's a test case
+          if (isTestCase(summary, description)) {
+            console.log(`Skipping test case: ${issue.key}`);
+            return null;
+          }
+          
+          return `[${issue.key}] ${summary}${description ? '\n' + description : ''}`;
+        })
+        .filter((text: string | null) => text !== null && text.trim())
+        .join("\n\n");
+
+      if (!combinedRequirements.trim()) {
+        toast({
+          title: "No requirements found",
+          description: "Only test cases were found. Please add requirement issues to Jira.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setRequirements(truncateText(combinedRequirements, MAX_CHARS));
+      
+      const requirementCount = issuesData.issues.filter((issue: any) => {
         const summary = issue.fields.summary || "";
         const description = parseJiraDescription(issue.fields.description);
-        
-        // Format: Issue Key: Summary\nDescription
-        return `[${issue.key}] ${summary}${description ? '\n' + description : ''}`;
-      })
-      .filter((text: string) => text.trim())
-      .join("\n\n");
-
-    console.log("📝 Combined requirements length:", combinedRequirements.length);
-
-    if (!combinedRequirements.trim()) {
+        return !isTestCase(summary, description);
+      }).length;
+      
       toast({
-        title: "No content found",
-        description: "Issues found but no readable content extracted.",
+        title: "Success!",
+        description: `Fetched ${requirementCount} requirements from ${firstProject.key} (filtered out test cases)`,
+      });
+      
+    } catch (err: any) {
+      console.error("Failed to fetch from Jira:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to fetch requirements from Jira.",
         variant: "destructive",
       });
-      return;
     }
-
-    // Set the requirements
-    setRequirements(truncateText(combinedRequirements, MAX_CHARS));
-    
-    toast({
-      title: "Success!",
-      description: `Fetched ${issuesData.issues.length} issues from ${firstProject.key}`,
-    });
-    
-  } catch (err: any) {
-    console.error("❌ Failed to fetch from Jira:", err);
-    toast({
-      title: "Error",
-      description: err.message || "Failed to fetch requirements from Jira. Please try again.",
-      variant: "destructive",
-    });
-  }
-};
+  };
   // Function to truncate text to max characters
   const truncateText = (text: string, maxLength: number) => {
     if (text.length <= maxLength) return text;
@@ -606,13 +643,13 @@ const CallJiraFetch = async () => {
       return;
     }
 
-    console.log('🚀 Processing with user:', user);
-    console.log('📧 User email:', user?.email);
+    console.log('Processing with user:', user);
+    console.log('User email:', user?.email);
 
     setIsProcessing(true);
 
     try {
-      // ✅ NOW PASSING USER INFO IN REQUEST BODY
+      // NOW PASSING USER INFO IN REQUEST BODY
       const requestBody = {
         requirements: requirements.trim(),
         charCount: requirements.length,
@@ -624,9 +661,8 @@ const CallJiraFetch = async () => {
         } : null
       };
 
-      console.log('📤 Sending request with user info:', requestBody.userInfo);
+      console.log('Sending request with user info:', requestBody.userInfo);
 
-     // const response = await fetch("http://localhost:3000/upload/generate-test", {
       const response = await fetch(`${import.meta.env.VITE_REQUEST_URL}/upload/generate-test`, {
         method: "POST",
         headers: {
@@ -642,8 +678,8 @@ const CallJiraFetch = async () => {
 
       const result = await response.json();
       
-      console.log('✅ Response received:', result);
-      console.log('👤 Created by:', result.metadata?.createdBy);
+      console.log('Response received:', result);
+      console.log('Created by:', result.metadata?.createdBy);
       
       toast({
         title: "Processing complete!",
@@ -691,28 +727,112 @@ const CallJiraFetch = async () => {
         )}
       </div>
 	  {/* Add to Jira Button */}
-		<div className="pt-4 border-t border-glass-border">
-		<Button
-			variant="default"
-			className="w-full glass-button"
-			onClick={CallJiraAdd}
-		>
-			<Building className="h-4 w-4 mr-2" />
-			Add Requirements to Jira
-		</Button>
-		</div>
+	  <div className="flex gap-2">
+        <div className="pt-4 border-t border-glass-border flex-1">
+          <Button
+            variant="default"
+            className="w-full glass-button"
+            onClick={CallJiraAdd}
+          >
+            <Building className="h-4 w-4 mr-2" />
+            Add Requirements to Jira
+          </Button>
+        </div>
 
-		{/* fetch from Jira Button */}
-		<div className="pt-4 border-t border-glass-border">
-		<Button
-			variant="default"
-			className="w-full glass-button"
-			onClick={CallJiraFetch}
-		>
-			<Building className="h-4 w-4 mr-2" />
-			'Fetch Requirements from Jira'
-		</Button>
-		</div>
+        <div className="pt-4 border-t border-glass-border flex-1">
+          <Button
+            variant="default"
+            className="w-full glass-button"
+            onClick={CallJiraFetch}
+          >
+            <Building className="h-4 w-4 mr-2" />
+            Fetch Requirements from Jira
+          </Button>
+        </div>
+      </div>
+
+      {/* ✅ NEW: Jira Requirement Input Modal */}
+      <Dialog open={showJiraModal} onOpenChange={setShowJiraModal}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Add Requirement to Jira</DialogTitle>
+            <DialogDescription>
+              Enter the requirement details to create a new Jira issue
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="jira-summary">
+                Summary <span className="text-red-500">*</span>
+              </Label>
+              <input
+                id="jira-summary"
+                className="w-full px-3 py-2 border border-glass-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="Brief summary of the requirement"
+                value={jiraSummary}
+                onChange={(e) => setJiraSummary(e.target.value)}
+                maxLength={255}
+              />
+              <p className="text-xs text-muted-foreground">
+                {jiraSummary.length}/255 characters
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="jira-description">
+                Description <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                id="jira-description"
+                className="min-h-[200px] resize-none"
+                placeholder="Detailed requirement description..."
+                value={jiraRequirement}
+                onChange={(e) => setJiraRequirement(e.target.value)}
+                maxLength={JIRA_MAX_CHARS}
+              />
+              <p className="text-xs text-muted-foreground">
+                {jiraRequirement.length}/{JIRA_MAX_CHARS} characters
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowJiraModal(false);
+                setJiraSummary("");
+                setJiraRequirement("");
+              }}
+              disabled={isSubmittingToJira}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleJiraSubmit}
+              disabled={
+                isSubmittingToJira ||
+                !jiraSummary.trim() ||
+                !jiraRequirement.trim()
+              }
+            >
+              {isSubmittingToJira ? (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Building className="h-4 w-4 mr-2" />
+                  Create Issue
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 		
       <div className="grid gap-6 md:grid-cols-2">
         {/* Upload Area */}
