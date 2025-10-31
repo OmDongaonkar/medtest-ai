@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
   "start": "node app.js",
-  "dev": "nodemon app.js"
+  "dev": "node app.js"
   },
   "dependencies": {
     "@ai-sdk/cohere": "^2.0.16",
