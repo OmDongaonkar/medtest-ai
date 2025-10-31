@@ -214,20 +214,6 @@ View previous generations in your profile and re-engage with past test cases
 
 ---
 
-## 🎥 Demo
-
-🎬 **[Watch 3-minute demo video](YOUR_DEMO_VIDEO_LINK)**
-
-### Screenshots
-
-**Dashboard**  
-![Dashboard](https://freeimage.host/i/KsFNgwP)
-
-**Test Case Generation AI Chatbot**  
-![Generation](https://freeimage.host/i/KsFNUAB)
-
----
-
 ## 🗺️ Roadmap
 
 ### ✅ Completed (Live Now)
