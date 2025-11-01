@@ -177,7 +177,7 @@ VITE_API_KEY=your_backup_gemini_api_key
 Backend:
 ```bash
 cd backend
-npm run dev
+node app.js
 ```
 
 Frontend:
