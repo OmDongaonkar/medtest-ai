@@ -3,7 +3,7 @@
 > **Automate Healthcare Test Case Generation with AI**  
 > Reduce manual QA effort by 70-80% while ensuring regulatory compliance.
 
-[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](YOUR_DEMO_LINK)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://medtest-ai.vercel.app/)
 
 ---
 
